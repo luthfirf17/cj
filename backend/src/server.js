@@ -3182,31 +3182,51 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
         const expenseImportIndices = new Set(importFlags.expenses || []);
         
         if (backupData.data.expenses && backupData.data.expenses.length > 0) {
+          // Build categoryIdMap by name, so even if category is duplicate and not imported, we can map to existing category
           const categoryIdMap = {};
-          // Get both user categories and default categories
+          // Get all categories for this user (including default)
           const newCategories = await query(
             'SELECT id, name FROM expense_categories WHERE user_id = $1 OR user_id IS NULL', 
             [userId]
           );
-          
+          // Map by name (case-insensitive)
           newCategories.rows.forEach(category => {
-            const oldCategory = backupData.data.expenseCategories?.find(c => c.name === category.name);
-            if (oldCategory) categoryIdMap[oldCategory.id] = category.id;
+            categoryIdMap[category.name.trim().toLowerCase()] = category.id;
           });
 
           let importedCount = 0;
           for (let i = 0; i < backupData.data.expenses.length; i++) {
             const expense = backupData.data.expenses[i];
-            
             // Import if: replace mode (import all) OR add mode with flag
             const shouldImport = importType === 'replace' || expenseImportIndices.has(i);
-            
             if (!shouldImport) {
               console.log(`  ⏭️  Skipped expense (not selected): ${expense.description}`);
               continue;
             }
-            
-            const newCategoryId = categoryIdMap[expense.category_id];
+            // Find category name from backupData expenseCategories (if available), else from expense itself
+            let categoryName = null;
+            if (expense.category_id && backupData.data.expenseCategories) {
+              const catObj = backupData.data.expenseCategories.find(c => c.id === expense.category_id);
+              if (catObj) categoryName = catObj.name;
+            }
+            // Fallback: if expense has categoryName property
+            if (!categoryName && expense.categoryName) categoryName = expense.categoryName;
+            // Fallback: if expense has category_name property
+            if (!categoryName && expense.category_name) categoryName = expense.category_name;
+            // Fallback: if expense has category (rare)
+            if (!categoryName && expense.category) categoryName = expense.category;
+            // Fallback: if expense has categoryName in notes
+            if (!categoryName && expense.notes && typeof expense.notes === 'string' && expense.notes.includes('categoryName')) {
+              try {
+                const notesObj = JSON.parse(expense.notes);
+                if (notesObj.categoryName) categoryName = notesObj.categoryName;
+              } catch {}
+            }
+            // Final fallback: if expense has category_id as string (rare)
+            if (!categoryName && typeof expense.category_id === 'string') categoryName = expense.category_id;
+            // Normalize name
+            if (categoryName) categoryName = categoryName.trim().toLowerCase();
+            const newCategoryId = categoryName ? categoryIdMap[categoryName] : null;
             if (newCategoryId) {
               await query(
                 `INSERT INTO expenses (user_id, category_id, amount, expense_date, description, created_at, updated_at) 
@@ -3216,7 +3236,7 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
               importedCount++;
               console.log(`  ✅ Imported expense: ${expense.description} - Rp ${expense.amount}`);
             } else {
-              console.log(`  ⚠️  Skipped expense (category not found): ${expense.description}`);
+              console.log(`  ⚠️  Skipped expense (category not found): ${expense.description} (categoryName: ${categoryName})`);
             }
           }
           console.log(`  ✅ Total imported ${importedCount} expenses (out of ${backupData.data.expenses.length})`);
