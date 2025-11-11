@@ -3032,8 +3032,22 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
         }
 
         // Import expense categories (preserve default/system categories)
+        // For 'replace' mode: import ALL categories
+        // For 'add' mode: import only those flagged for import (not duplicates)
+        const expenseCategoryImportIndices = new Set(importFlags.expenseCategories || []);
+        
         if (backupData.data.expenseCategories && backupData.data.expenseCategories.length > 0) {
-          for (const category of backupData.data.expenseCategories) {
+          for (let i = 0; i < backupData.data.expenseCategories.length; i++) {
+            const category = backupData.data.expenseCategories[i];
+            
+            // Import if: replace mode (import all) OR add mode with flag
+            const shouldImport = importType === 'replace' || expenseCategoryImportIndices.has(i);
+            
+            if (!shouldImport) {
+              console.log(`  ⏭️  Skipped category (not selected): ${category.name}`);
+              continue;
+            }
+            
             // Skip if it's a default category that already exists
             if (category.is_default || category.user_id === null) {
               const existing = await query(
@@ -3163,6 +3177,10 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
         }
 
         // Import expenses (need to map category IDs, including defaults)
+        // For 'replace' mode: import ALL expenses
+        // For 'add' mode: import only those flagged for import (not duplicates)
+        const expenseImportIndices = new Set(importFlags.expenses || []);
+        
         if (backupData.data.expenses && backupData.data.expenses.length > 0) {
           const categoryIdMap = {};
           // Get both user categories and default categories
@@ -3176,7 +3194,18 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
             if (oldCategory) categoryIdMap[oldCategory.id] = category.id;
           });
 
-          for (const expense of backupData.data.expenses) {
+          let importedCount = 0;
+          for (let i = 0; i < backupData.data.expenses.length; i++) {
+            const expense = backupData.data.expenses[i];
+            
+            // Import if: replace mode (import all) OR add mode with flag
+            const shouldImport = importType === 'replace' || expenseImportIndices.has(i);
+            
+            if (!shouldImport) {
+              console.log(`  ⏭️  Skipped expense (not selected): ${expense.description}`);
+              continue;
+            }
+            
             const newCategoryId = categoryIdMap[expense.category_id];
             if (newCategoryId) {
               await query(
@@ -3184,11 +3213,13 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [userId, newCategoryId, expense.amount, expense.expense_date, expense.description, expense.created_at, expense.updated_at]
               );
+              importedCount++;
+              console.log(`  ✅ Imported expense: ${expense.description} - Rp ${expense.amount}`);
             } else {
               console.log(`  ⚠️  Skipped expense (category not found): ${expense.description}`);
             }
           }
-          console.log(`  ✅ Imported ${backupData.data.expenses.length} expenses`);
+          console.log(`  ✅ Total imported ${importedCount} expenses (out of ${backupData.data.expenses.length})`);
         }
 
         // Import company settings (including bank information)
