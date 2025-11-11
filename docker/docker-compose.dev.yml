@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: catatjasamu-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: catat_jasamu_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ../backend/src/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - catatjasamu-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API with hot-reload
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: catatjasamu-backend-dev
+    restart: unless-stopped
+    environment:
+      PORT: 5001
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: catat_jasamu_db
+      DB_USER: postgres
+      DB_PASSWORD: 1234
+      JWT_SECRET: catat-jasamu-secret-key-2025
+      JWT_EXPIRE: 7d
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - catatjasamu-network
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Frontend with hot-reload
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    container_name: catatjasamu-frontend-dev
+    restart: unless-stopped
+    environment:
+      - VITE_API_BASE_URL=http://localhost:5001/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - catatjasamu-network
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    command: npm run dev
+
+networks:
+  catatjasamu-network:
+    driver: bridge
+
+volumes:
+  postgres_data_dev:
+    driver: local

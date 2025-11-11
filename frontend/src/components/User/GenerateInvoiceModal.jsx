@@ -1,0 +1,1625 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { FiX, FiDownload, FiPrinter, FiInfo } from 'react-icons/fi';
+import Button from '../Common/Button';
+import api from '../../services/api';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+
+const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
+  const [invoiceType, setInvoiceType] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dueDate, setDueDate] = useState('');
+  const [dpPercentage, setDpPercentage] = useState(30);
+  const [companySettings, setCompanySettings] = useState(null);
+  const [dpInputValue, setDpInputValue] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState('pdf');
+  const [fileName, setFileName] = useState('');
+  const invoiceRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen && booking) {
+      console.log('=== BOOKING DATA RECEIVED ===');
+      console.log('Full booking object:', JSON.stringify(booking, null, 2));
+      console.log('booking.booking_date:', booking.booking_date);
+      console.log('booking.booking_time:', booking.booking_time);
+      console.log('booking.booking_time_end:', booking.booking_time_end);
+      console.log('booking.booking_details:', booking.booking_details);
+      console.log('booking.notes:', booking.notes);
+      
+      if (booking.booking_details) {
+        console.log('booking_details.booking_time:', booking.booking_details.booking_time);
+        console.log('booking_details.booking_time_end:', booking.booking_details.booking_time_end);
+        console.log('booking_details.booking_date:', booking.booking_details.booking_date);
+        console.log('booking_details.booking_date_end:', booking.booking_details.booking_date_end);
+      }
+      
+      // Try to parse booking_details from notes if not already parsed
+      if (!booking.booking_details && booking.notes) {
+        try {
+          const parsedDetails = JSON.parse(booking.notes);
+          booking.booking_details = parsedDetails;
+          console.log('Parsed booking_details from notes:', parsedDetails);
+        } catch (e) {
+          console.log('Notes is not JSON format, treating as plain text');
+        }
+      }
+      
+      console.log('============================');
+      
+      const timestamp = Date.now();
+      const invNumber = `INV-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${timestamp.toString().slice(-5)}`;
+      setInvoiceNumber(invNumber);
+
+      const due = new Date();
+      due.setDate(due.getDate() + 30);
+      setDueDate(due.toISOString().split('T')[0]);
+
+      if (booking.payment_status === 'Lunas' || booking.payment_status === 'paid') {
+        setInvoiceType('penuh');
+      } else if (booking.payment_status === 'DP' || booking.payment_status === 'partial') {
+        setInvoiceType('pelunasan'); // Jika sudah DP, maka hanya bisa pelunasan
+      } else {
+        setInvoiceType('');
+      }
+
+      if (booking.amount_paid > 0) {
+        setDpInputValue(booking.amount_paid.toLocaleString('id-ID'));
+        const percentage = (booking.amount_paid / (booking.total_amount * 1.02)) * 100;
+        setDpPercentage(parseFloat(percentage.toFixed(2)));
+      } else {
+        setDpInputValue('');
+      }
+
+      fetchCompanySettings();
+    }
+  }, [isOpen, booking]);
+
+  const fetchCompanySettings = async () => {
+    try {
+      const response = await api.get('/user/company-settings');
+      if (response.data.success && response.data.data) {
+        console.log('=== COMPANY SETTINGS DEBUG ===');
+        console.log('Company Settings Data:', response.data.data);
+        console.log('Bank 1 - Name:', response.data.data.bank_name);
+        console.log('Bank 1 - Account Number:', response.data.data.account_number);
+        console.log('Bank 1 - Account Holder:', response.data.data.account_holder_name);
+        console.log('Bank 2 - Name:', response.data.data.bank_name_alt);
+        console.log('Bank 2 - Account Number:', response.data.data.account_number_alt);
+        console.log('Bank 2 - Account Holder:', response.data.data.account_holder_name_alt);
+        console.log('============================');
+        setCompanySettings(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching company settings:', error);
+    }
+  };
+
+  const calculateInvoiceAmounts = () => {
+    if (!booking) return { 
+      subtotal: 0, 
+      dp: 0, 
+      remaining: 0, 
+      total: 0, 
+      tax: 0, 
+      alreadyPaid: 0,
+      discount: 0,
+      services: [],
+      additional_fees: [],
+      tax_percentage: 0
+    };
+
+    // Parse booking details if available
+    let bookingDetails = booking.booking_details;
+    const bookingDays = bookingDetails?.booking_days || 1;
+    
+    // Calculate subtotal from services or use total_amount
+    let servicesSubtotal = 0;
+    let servicesList = [];
+    
+    if (bookingDetails && bookingDetails.services && bookingDetails.services.length > 0) {
+      // New format: use booking_details
+      servicesList = bookingDetails.services;
+      servicesSubtotal = bookingDetails.services.reduce((sum, service) => {
+        return sum + parseFloat(service.custom_price || 0);
+      }, 0);
+      // Multiply by booking days
+      servicesSubtotal = servicesSubtotal * bookingDays;
+    } else if (booking.services && booking.services.length > 0) {
+      // Legacy format: create service list from booking.services (service names only)
+      // Use total_amount as price since we don't have individual prices
+      servicesList = booking.services.map(serviceName => ({
+        service_name: serviceName,
+        custom_price: parseFloat(booking.total_amount)
+      }));
+      servicesSubtotal = parseFloat(booking.total_amount);
+    } else {
+      // Fallback: no services data
+      servicesSubtotal = parseFloat(booking.total_amount);
+    }
+    
+    // Get discount and additional fees from booking details
+    const discount = bookingDetails?.discount || 0;
+    const additional_fees = bookingDetails?.additional_fees || [];
+    const tax_percentage = bookingDetails?.tax_percentage || 0;
+    
+    // Calculate additional fees total
+    const additionalFeesTotal = additional_fees.reduce((sum, fee) => {
+      return sum + parseFloat(fee.amount || 0);
+    }, 0);
+    
+    // Calculate subtotal after discount
+    const subtotalAfterDiscount = servicesSubtotal - discount;
+    
+    // Calculate tax
+    const tax = (subtotalAfterDiscount * tax_percentage) / 100;
+    
+    // Calculate final total
+    const total = subtotalAfterDiscount + tax + additionalFeesTotal;
+    
+    // Gunakan nilai dari input manual jika ada, jika tidak gunakan perhitungan dari percentage
+    let dpAmount = (total * dpPercentage) / 100;
+    if (dpInputValue && invoiceType === 'dp') {
+      const manualValue = parseFloat(dpInputValue.replace(/\./g, ''));
+      if (!isNaN(manualValue) && manualValue > 0) {
+        dpAmount = manualValue;
+      }
+    }
+    
+    // alreadyPaid = yang sudah dibayar sebelumnya (tidak berubah di UI)
+    // remaining = sisa setelah DP baru (untuk preview)
+    const alreadyPaid = booking.amount_paid || 0;
+    let remaining = total - dpAmount; // Sisa dihitung dari DP baru
+    
+    if (invoiceType === 'pelunasan') {
+      // Untuk pelunasan, remaining adalah sisa setelah amount_paid
+      remaining = total - alreadyPaid;
+    }
+
+    return {
+      subtotal: servicesSubtotal,
+      subtotalAfterDiscount,
+      dp: dpAmount,
+      remaining,
+      total,
+      tax,
+      discount,
+      alreadyPaid,
+      services: servicesList,
+      additional_fees,
+      additionalFeesTotal,
+      tax_percentage
+    };
+  };
+
+  const amounts = calculateInvoiceAmounts();
+  
+  // Define bookingDetails at component level for use in JSX
+  const bookingDetails = booking?.booking_details;
+  
+  // Helper function to format phone number: add +62 prefix with space
+  const formatPhoneNumber = (phone) => {
+    if (!phone) return '';
+    // Remove all spaces and special characters except numbers
+    const cleaned = phone.replace(/[^\d]/g, '');
+    // If starts with 62, add +62 and space
+    if (cleaned.startsWith('62')) {
+      return `+62 ${cleaned.substring(2)}`;
+    }
+    // If starts with 0, replace with +62 and space
+    if (cleaned.startsWith('0')) {
+      return `+62 ${cleaned.substring(1)}`;
+    }
+    // Otherwise, add +62 and space
+    return `+62 ${cleaned}`;
+  };
+  
+  // Debug log amounts
+  if (isOpen && booking) {
+    console.log('=== CALCULATED AMOUNTS ===');
+    console.log('Services:', amounts.services);
+    console.log('Subtotal:', amounts.subtotal);
+    console.log('Discount:', amounts.discount);
+    console.log('Subtotal After Discount:', amounts.subtotalAfterDiscount);
+    console.log('Tax %:', amounts.tax_percentage);
+    console.log('Tax Amount:', amounts.tax);
+    console.log('Additional Fees:', amounts.additional_fees);
+    console.log('Additional Fees Total:', amounts.additionalFeesTotal);
+    console.log('GRAND TOTAL:', amounts.total);
+    console.log('==========================');
+  }
+
+  const getInvoiceAmount = () => {
+    switch (invoiceType) {
+      case 'dp':
+        return amounts.dp;
+      case 'pelunasan':
+        return amounts.remaining;
+      case 'penuh':
+        return amounts.total;
+      default:
+        return 0;
+    }
+  };
+
+  const handleSaveInvoice = async () => {
+    try {
+      setIsSaving(true);
+      
+      let newPaymentStatus = booking.payment_status;
+      let newAmountPaid = booking.amount_paid || 0;
+
+      if (invoiceType === 'dp') {
+        newPaymentStatus = 'partial';
+        newAmountPaid = amounts.dp;
+      } else if (invoiceType === 'pelunasan') {
+        newPaymentStatus = 'paid';
+        newAmountPaid = amounts.total;
+      } else if (invoiceType === 'penuh') {
+        newPaymentStatus = 'paid';
+        newAmountPaid = amounts.total;
+      }
+
+      // Prepare booking details to save
+      let bookingDetailsToSave = booking.booking_details;
+      
+      // If booking_details doesn't exist, try to parse from notes
+      if (!bookingDetailsToSave && booking.notes) {
+        try {
+          bookingDetailsToSave = JSON.parse(booking.notes);
+        } catch (e) {
+          console.log('Notes is not JSON, creating new booking_details');
+        }
+      }
+      
+      // Update payment info in booking_details
+      if (bookingDetailsToSave) {
+        bookingDetailsToSave.payment_status = newPaymentStatus;
+        bookingDetailsToSave.amount_paid = Math.round(newAmountPaid);
+      }
+
+      // Extract date and time from booking_date if it's in ISO format
+      let bookingDate = booking.booking_date;
+      let bookingTime = booking.booking_time;
+      
+      if (booking.booking_date && booking.booking_date.includes('T')) {
+        const dateObj = new Date(booking.booking_date);
+        bookingDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD
+        bookingTime = dateObj.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+      }
+
+      // Convert status to English for backend (database constraint)
+      let backendStatus = 'confirmed'; // default
+      if (booking.status === 'completed' || booking.status === 'Selesai') {
+        backendStatus = 'completed';
+      } else if (booking.status === 'cancelled' || booking.status === 'Dibatalkan') {
+        backendStatus = 'cancelled';
+      } else if (booking.status === 'confirmed' || booking.status === 'Dijadwalkan') {
+        backendStatus = 'confirmed';
+      } else {
+        // If status is already in English format, use it
+        const validStatuses = ['confirmed', 'completed', 'cancelled'];
+        backendStatus = validStatuses.includes(booking.status) ? booking.status : 'confirmed';
+      }
+
+      console.log('=== SAVE INVOICE DEBUG ===');
+      console.log('Booking ID:', booking.id);
+      console.log('Service ID:', booking.service_id, 'Type:', typeof booking.service_id);
+      console.log('Original booking_date:', booking.booking_date);
+      console.log('Formatted booking_date:', bookingDate);
+      console.log('Original booking_time:', booking.booking_time);
+      console.log('Formatted booking_time:', bookingTime);
+      console.log('Original Status:', booking.status);
+      console.log('Converted Status:', backendStatus);
+      console.log('Payment Status:', newPaymentStatus);
+      console.log('Amount Paid:', Math.round(newAmountPaid));
+      console.log('Total Amount:', amounts.total);
+      console.log('========================');
+
+      const requestBody = {
+        service_id: parseInt(booking.service_id),
+        booking_date: bookingDate,
+        booking_time: bookingTime,
+        location_name: booking.location_name || '',
+        location_map_url: booking.location_map_url || '',
+        status: backendStatus,
+        total_amount: amounts.total,
+        notes: bookingDetailsToSave ? JSON.stringify(bookingDetailsToSave) : booking.notes || '',
+        payment_status: newPaymentStatus,
+        amount_paid: Math.round(newAmountPaid),
+      };
+
+      console.log('Request body:', requestBody);
+
+      const response = await api.put(`/user/bookings/${booking.id}`, requestBody);
+
+      alert('Invoice berhasil disimpan! Status pembayaran telah diupdate.');
+      
+      if (onSave) {
+        onSave();
+      }
+      
+      onClose();
+    } catch (error) {
+      console.error('Error saving invoice:', error);
+      alert(`Gagal menyimpan invoice: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    if (!invoiceType) {
+      alert('Pilih jenis invoice terlebih dahulu');
+      return;
+    }
+    // Set default filename
+    const defaultName = `Invoice-${invoiceNumber || 'DRAFT'}-${booking?.client_name || 'Client'}`;
+    setFileName(defaultName);
+    setDownloadFormat('pdf');
+    setShowDownloadModal(true);
+  };
+
+  const handleDownloadJPEG = () => {
+    if (!invoiceType) {
+      alert('Pilih jenis invoice terlebih dahulu');
+      return;
+    }
+    // Set default filename
+    const defaultName = `Invoice-${invoiceNumber || 'DRAFT'}-${booking?.client_name || 'Client'}`;
+    setFileName(defaultName);
+    setDownloadFormat('jpeg');
+    setShowDownloadModal(true);
+  };
+
+  const executeDownload = async () => {
+    if (!fileName.trim()) {
+      alert('Nama file tidak boleh kosong');
+      return;
+    }
+
+    try {
+      const invoiceElement = invoiceRef.current;
+      if (!invoiceElement) {
+        alert('Invoice tidak ditemukan');
+        return;
+      }
+
+      // Capture invoice as canvas with higher quality
+      const canvas = await html2canvas(invoiceElement, {
+        scale: 2.5, // Balanced quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: invoiceElement.scrollWidth,
+        windowHeight: invoiceElement.scrollHeight,
+        imageTimeout: 0,
+        removeContainer: true
+      });
+
+      if (downloadFormat === 'pdf') {
+        // Generate PDF - fit to one page
+        const imgWidth = 210; // A4 width in mm
+        const pageHeight = 297; // A4 height in mm
+        let imgHeight = (canvas.height * imgWidth) / canvas.width;
+        
+        // If content is taller than A4, scale it down to fit
+        if (imgHeight > pageHeight) {
+          imgHeight = pageHeight;
+        }
+        
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        
+        // Center the image on the page if it's shorter than A4
+        const yPosition = imgHeight < pageHeight ? (pageHeight - imgHeight) / 2 : 0;
+        
+        pdf.addImage(imgData, 'JPEG', 0, yPosition, imgWidth, imgHeight);
+        pdf.save(`${fileName}.pdf`);
+      } else {
+        // Generate JPEG with high quality
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${fileName}.jpg`;
+          link.click();
+          URL.revokeObjectURL(url);
+        }, 'image/jpeg', 0.95);
+      }
+
+      setShowDownloadModal(false);
+      alert(`Invoice berhasil didownload sebagai ${downloadFormat.toUpperCase()}`);
+    } catch (error) {
+      console.error('Error downloading invoice:', error);
+      alert('Gagal download invoice. Silakan coba lagi.');
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Update dpInputValue when invoice type changes
+  useEffect(() => {
+    if (invoiceType === 'dp') {
+      // Set initial value saat pertama kali buka
+      const initialDp = Math.round((amounts.total * dpPercentage) / 100);
+      setDpInputValue(initialDp.toLocaleString('id-ID'));
+    }
+  }, [invoiceType]);
+
+  if (!isOpen || !booking) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-xl font-bold text-gray-900">Generate Invoice</h2>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" icon={<FiDownload />} onClick={handleDownloadPDF}>
+              PDF
+            </Button>
+            <Button variant="secondary" size="sm" icon={<FiDownload />} onClick={handleDownloadJPEG}>
+              JPEG
+            </Button>
+            <Button variant="secondary" size="sm" icon={<FiPrinter />} onClick={handlePrint}>
+              Print
+            </Button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+              <FiX size={24} />
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6 space-y-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-b">
+            {/* Info Banner */}
+            <div className="bg-blue-100 border-l-4 border-blue-500 rounded-r-lg p-4">
+              <div className="flex items-start gap-3">
+                <FiInfo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-blue-800">
+                  <p className="font-semibold mb-1">Pilih jenis invoice di sini:</p>
+                  <ul className="space-y-1 ml-4 list-disc">
+                    <li><span className="font-semibold">Invoice DP</span> untuk pembayaran awal, atau <span className="font-semibold">Invoice Pelunasan</span> untuk sisa pembayaran, atau <span className="font-semibold">Invoice Penuh</span> untuk pembayaran langsung</li>
+                    <li>Diskon dan PPN dihitung dari halaman edit booking</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Pilih Jenis Invoice</h3>
+              
+              {/* Status Info untuk DP */}
+              {(booking.payment_status === 'DP' || booking.payment_status === 'partial') && (
+                <div className="mb-4 p-4 bg-orange-50 border-l-4 border-orange-500 rounded-r-lg">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-semibold text-orange-800 mb-1">⚠️ Status: Down Payment (DP) - Invoice Pelunasan Saja</p>
+                      <p className="text-sm text-orange-700">
+                        Sudah dibayar: <span className="font-bold">Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
+                      </p>
+                      <p className="text-sm text-orange-700">
+                        Sisa pembayaran: <span className="font-bold">Rp {Math.round(amounts.total - (booking.amount_paid || 0)).toLocaleString('id-ID')}</span>
+                      </p>
+                      <p className="text-xs text-orange-600 mt-1 italic">
+                        ℹ️ Invoice DP sudah dibuat. Anda hanya dapat membuat Invoice Pelunasan untuk menyelesaikan pembayaran.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-sm text-gray-600 mb-4">
+                {booking.payment_status === 'Lunas' || booking.payment_status === 'paid' 
+                  ? '✓ Pembayaran sudah lunas - Invoice Penuh' 
+                  : booking.payment_status === 'DP' || booking.payment_status === 'partial'
+                  ? '⚠️ Hanya Invoice Pelunasan yang tersedia (DP sudah dibuat sebelumnya)'
+                  : 'Pilih Invoice DP atau Invoice Penuh'}
+              </p>
+              
+              {/* Invoice Type Buttons */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Invoice DP */}
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('dp')}
+                    disabled={
+                      booking.payment_status === 'Lunas' || 
+                      booking.payment_status === 'paid' || 
+                      booking.payment_status === 'DP' || 
+                      booking.payment_status === 'partial'
+                    }
+                    className={`relative flex flex-col items-center p-5 border-2 rounded-xl transition-all duration-200 ${
+                      invoiceType === 'dp' 
+                        ? 'border-blue-500 bg-blue-50 shadow-lg scale-105' 
+                        : (booking.payment_status === 'Lunas' || booking.payment_status === 'paid' || booking.payment_status === 'DP' || booking.payment_status === 'partial')
+                        ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-50'
+                        : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
+                    }`}
+                  >
+                    {invoiceType === 'dp' && (
+                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mb-3">
+                      <span className="text-white font-bold text-lg">DP</span>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-semibold text-gray-900 mb-1">Invoice DP</div>
+                      <div className="text-xs text-gray-500">
+                        {(booking.payment_status === 'DP' || booking.payment_status === 'partial')
+                          ? 'DP sudah dibuat'
+                          : 'Pembayaran DP'}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Invoice Pelunasan */}
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('pelunasan')}
+                    disabled={booking.payment_status === 'Lunas' || booking.payment_status === 'paid' || booking.payment_status === 'Belum Bayar' || booking.payment_status === 'unpaid'}
+                    className={`relative flex flex-col items-center p-5 border-2 rounded-xl transition-all duration-200 ${
+                      invoiceType === 'pelunasan' 
+                        ? 'border-orange-500 bg-orange-50 shadow-lg scale-105' 
+                        : (booking.payment_status === 'Lunas' || booking.payment_status === 'paid' || booking.payment_status === 'Belum Bayar' || booking.payment_status === 'unpaid')
+                        ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-50'
+                        : 'border-gray-300 bg-white hover:border-orange-400 hover:shadow-md'
+                    }`}
+                  >
+                    {invoiceType === 'pelunasan' && (
+                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center mb-3">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-semibold text-gray-900 mb-1">Invoice Pelunasan</div>
+                      <div className="text-xs text-gray-500">Sisa pembayaran</div>
+                    </div>
+                  </button>
+
+                  {/* Invoice Penuh */}
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('penuh')}
+                    disabled={
+                      booking.payment_status === 'Lunas' || 
+                      booking.payment_status === 'paid' || 
+                      booking.payment_status === 'DP' || 
+                      booking.payment_status === 'partial'
+                    }
+                    className={`relative flex flex-col items-center p-5 border-2 rounded-xl transition-all duration-200 ${
+                      invoiceType === 'penuh' 
+                        ? 'border-green-500 bg-green-50 shadow-lg scale-105' 
+                        : (booking.payment_status === 'Lunas' || booking.payment_status === 'paid')
+                        ? 'border-green-400 bg-green-50 cursor-default'
+                        : (booking.payment_status === 'DP' || booking.payment_status === 'partial')
+                        ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-50'
+                        : 'border-gray-300 bg-white hover:border-green-400 hover:shadow-md'
+                    }`}
+                  >
+                    {invoiceType === 'penuh' && (
+                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mb-3">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-semibold text-gray-900 mb-1">Invoice Penuh</div>
+                      <div className="text-xs text-gray-500">
+                        {(booking.payment_status === 'DP' || booking.payment_status === 'partial')
+                          ? 'Tidak tersedia untuk DP'
+                          : 'Pembayaran langsung'}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+                
+                {/* DP Input Section */}
+                {invoiceType === 'dp' && (
+                  <div className="mt-4 p-5 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl border-2 border-yellow-200 shadow-sm">
+                    <label className="flex text-sm font-semibold text-gray-800 mb-3 items-center gap-2">
+                      <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">%</span>
+                      </div>
+                      Persentase Down Payment (DP)
+                    </label>
+                    
+                    {/* Slider dan Input Persentase */}
+                    <div className="flex items-center gap-4 mb-3">
+                      <input
+                        type="range"
+                        min="1"
+                        max="90"
+                        step="1"
+                        value={dpPercentage}
+                        onChange={(e) => {
+                          const newPercentage = parseInt(e.target.value);
+                          setDpPercentage(newPercentage);
+                          // Update nominal input value
+                          const newDpAmount = Math.round((amounts.total * newPercentage) / 100);
+                          setDpInputValue(newDpAmount.toLocaleString('id-ID'));
+                        }}
+                        className="flex-1 h-2 bg-yellow-200 rounded-lg appearance-none cursor-pointer slider"
+                        style={{
+                          background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${(dpPercentage/90)*100}%, #fef3c7 ${(dpPercentage/90)*100}%, #fef3c7 100%)`
+                        }}
+                      />
+                      <div className="relative">
+                        <div className="w-24 px-4 py-2 text-2xl font-bold text-yellow-600 text-center bg-white rounded-lg border-2 border-yellow-300">
+                          {Math.round(dpPercentage)}%
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Input Nominal DP Manual */}
+                    <div className="mt-4 p-3 bg-white rounded-lg border-2 border-yellow-300">
+                      <label className="block text-xs font-semibold text-gray-700 mb-2">
+                        Atau masukkan nominal DP langsung:
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
+                        <input
+                          type="text"
+                          value={dpInputValue}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\./g, '');
+                            const numValue = parseInt(value) || 0;
+                            const maxDp = Math.round((amounts.total * 90) / 100);
+                            
+                            // Batasi maksimal 90% dari total
+                            const clampedValue = Math.min(numValue, maxDp);
+                            
+                            setDpInputValue(clampedValue > 0 ? clampedValue.toLocaleString('id-ID') : '');
+                            
+                            // Update persentase berdasarkan nominal
+                            const percentage = clampedValue > 0 ? (clampedValue / amounts.total) * 100 : 0;
+                            setDpPercentage(parseFloat(percentage.toFixed(2)));
+                          }}
+                          placeholder="0"
+                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 font-semibold text-gray-700"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1 italic">
+                        Total: Rp {Math.round(amounts.total).toLocaleString('id-ID')} | Maksimal DP (90%): Rp {Math.round((amounts.total * 90) / 100).toLocaleString('id-ID')}
+                      </p>
+                    </div>
+                    
+                    <div className="mt-3 text-sm text-gray-700 bg-white/60 p-3 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <span>Jumlah DP ({dpPercentage.toFixed(2)}%):</span>
+                        <span className="font-bold text-yellow-700 text-lg">
+                          Rp {Math.round(amounts.dp).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Warning jika mendekati atau mencapai 90% */}
+                    {dpPercentage >= 85 && (
+                      <div className="mt-3 p-3 bg-orange-50 border-l-4 border-orange-500 rounded-r-lg">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <div className="text-xs text-orange-800">
+                            <p className="font-semibold">
+                              {dpPercentage >= 90 ? '⚠️ DP maksimal 90% tercapai!' : '⚠️ DP mendekati batas maksimal'}
+                            </p>
+                            <p className="mt-1">Maksimal DP adalah 90% dari total pembayaran (Rp {Math.round((amounts.total * 90) / 100).toLocaleString('id-ID')})</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Summary Box */}
+                {invoiceType && (
+                  <div className="mt-4 p-5 bg-white rounded-xl border-2 border-gray-200 shadow-lg">
+                    <h4 className="flex font-bold text-gray-900 mb-4 items-center gap-2 text-lg">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      Rincian Pembayaran
+                    </h4>
+                    
+                    {invoiceType === 'dp' && (
+                      <div className="space-y-3">
+                        {(booking.payment_status === 'DP' || booking.payment_status === 'partial') && booking.amount_paid > 0 && (
+                          <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+                            <div>
+                              <span className="text-sm text-gray-700">Sudah Dibayar</span>
+                              <span className="text-xs text-green-600 ml-2 font-semibold">
+                                ({((booking.amount_paid / amounts.total) * 100).toFixed(2).replace('.', ',')}%)
+                              </span>
+                            </div>
+                            <span className="text-lg font-bold text-green-700">Rp {(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                          <div>
+                            <span className="text-sm text-gray-700">Down Payment ({dpPercentage.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%)</span>
+                            <p className="text-xs text-yellow-600 italic">
+                              {(booking.payment_status === 'DP' || booking.payment_status === 'partial') 
+                                ? 'Update nominal DP' 
+                                : 'DP yang akan dibayar'}
+                            </p>
+                          </div>
+                          <span className="text-lg font-bold text-yellow-700">Rp {Math.round(amounts.dp).toLocaleString('id-ID')}</span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                          <span className="text-sm text-gray-700">Sisa Setelah DP</span>
+                          <span className="text-lg font-bold text-gray-700">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
+                        </div>
+                        <div className="pt-3 border-t-2 border-gray-200">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-gray-600">Total Keseluruhan</span>
+                            <span className="text-xl font-bold text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {invoiceType === 'pelunasan' && (
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+                          <div>
+                            <span className="text-sm text-gray-700">Sudah Dibayar</span>
+                            <span className="text-xs text-green-600 ml-2 font-semibold">
+                              ({((booking.amount_paid / amounts.total) * 100).toFixed(2).replace('.', ',')}%)
+                            </span>
+                          </div>
+                          <span className="text-lg font-bold text-green-700">Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
+                          <div>
+                            <span className="text-sm text-gray-700">Sisa Pembayaran</span>
+                            <span className="text-xs text-red-600 ml-2 font-semibold">
+                              ({((amounts.remaining / amounts.total) * 100).toFixed(2).replace('.', ',')}%)
+                            </span>
+                          </div>
+                          <span className="text-lg font-bold text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
+                        </div>
+                        <div className="pt-3 border-t-2 border-gray-200">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-gray-600">Total Keseluruhan</span>
+                            <span className="text-xl font-bold text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {invoiceType === 'penuh' && (
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                          <span className="text-sm font-medium text-gray-700">Total Pembayaran</span>
+                          <span className="text-2xl font-bold text-green-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                        </div>
+                        <div className="text-xs text-gray-500 text-center">
+                          {booking.payment_status === 'Lunas' || booking.payment_status === 'paid' 
+                            ? '✓ Pembayaran telah lunas' 
+                            : 'Pembayaran langsung tanpa DP'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Invoice Details */}
+              <div className="grid grid-cols-3 gap-4 mt-6">
+                <div>
+                  <label className="flex text-sm font-semibold text-gray-700 mb-2 items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                    </svg>
+                    Nomor Invoice
+                  </label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white font-mono text-sm"
+                    placeholder="INV-xxxxx"
+                  />
+                </div>
+
+                <div>
+                  <label className="flex text-sm font-semibold text-gray-700 mb-2 items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Tanggal Invoice
+                  </label>
+                  <input
+                    type="date"
+                    value={invoiceDate}
+                    onChange={(e) => setInvoiceDate(e.target.value)}
+                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="flex text-sm font-semibold text-gray-700 mb-2 items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Jatuh Tempo
+                  </label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Invoice Preview - Visible in Modal */}
+          <div className="p-6 bg-gray-50">
+            <div className="border border-gray-300 rounded-lg p-8 bg-white shadow-lg max-w-4xl mx-auto" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+              {/* Company Info */}
+              <div className="flex justify-between items-start mb-8 pb-6 border-b-2 border-gray-200">
+                <div>
+                  {companySettings?.company_logo_url && (
+                    <img src={companySettings.company_logo_url} alt="Company Logo" className="h-16 mb-3 object-contain" />
+                  )}
+                  <h1 className="text-3xl font-bold text-gray-900">{companySettings?.company_name || 'Nama Perusahaan'}</h1>
+                  {companySettings?.company_address && <p className="text-sm text-gray-600 mt-2">{companySettings.company_address}</p>}
+                  {companySettings?.company_phone && <p className="text-sm text-gray-600">Kontak: {companySettings.company_phone}</p>}
+                  {companySettings?.company_email && <p className="text-sm text-gray-600">Email: {companySettings.company_email}</p>}
+                </div>
+                <div className="text-right">
+                  <h2 className="text-3xl font-bold text-gray-900">INVOICE</h2>
+                  <p className="text-sm text-gray-600 mt-2">{invoiceNumber}</p>
+                </div>
+              </div>
+
+              {/* Bill To */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Bill To:</h3>
+                <p className="font-semibold text-gray-900">{booking.client_name}</p>
+                <p className="text-sm text-gray-600">{formatPhoneNumber(booking.contact)}</p>
+                {(booking.address || booking.location) && (
+                  <p className="text-sm text-gray-600 mt-1">{booking.address || booking.location}</p>
+                )}
+              </div>
+
+              {/* Invoice Dates */}
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Tanggal Invoice: {new Date(invoiceDate).toLocaleDateString('id-ID')}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Jatuh Tempo: {new Date(dueDate).toLocaleDateString('id-ID')}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Tanggal Layanan: {new Date(booking.booking_date).toLocaleDateString('id-ID')}</p>
+                </div>
+              </div>
+
+              {/* Invoice Items Table */}
+              <table className="w-full mb-6" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Deskripsi Layanan</th>
+                    <th className="text-center py-2 px-3 text-sm font-semibold text-gray-700">Tanggal & Waktu Mulai</th>
+                    <th className="text-center py-2 px-3 text-sm font-semibold text-gray-700">Tanggal & Waktu Selesai</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">Jumlah</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {amounts.services && amounts.services.length > 0 ? (
+                    amounts.services.map((service, index) => {
+                      const details = booking.booking_details;
+                      const bookingDays = details?.booking_days || 1;
+                      const hasEndDate = details?.booking_date_end;
+                      
+                      // Prioritas pengambilan waktu mulai: booking_details > booking table > fallback
+                      let startTime = '09:00';
+                      if (details?.booking_time) {
+                        startTime = details.booking_time;
+                      } else if (booking.booking_time) {
+                        startTime = booking.booking_time;
+                      }
+                      
+                      // Prioritas pengambilan waktu selesai
+                      let endTime = '17:00';
+                      if (details?.booking_time_end) {
+                        endTime = details.booking_time_end;
+                      } else if (booking.booking_time_end) {
+                        endTime = booking.booking_time_end;
+                      }
+                      
+                      return (
+                        <tr key={index} className="border-b">
+                          <td className="py-3 px-3 text-sm text-gray-900">
+                            {service.service_name}
+                            {bookingDays > 1 && <span className="ml-2 text-blue-600 font-semibold">x{bookingDays}</span>}
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                            {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                            <span className="font-semibold">{startTime}</span>
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                            {hasEndDate ? (
+                              <>
+                                {new Date(details.booking_date_end).toLocaleDateString('id-ID')}<br/>
+                                <span className="font-semibold">{endTime}</span>
+                              </>
+                            ) : (
+                              <>
+                                {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                                <span className="font-semibold">{endTime}</span>
+                              </>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-900 text-right">Rp {Math.round(service.custom_price).toLocaleString('id-ID')}</td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    booking.services?.map((service, index) => {
+                      const details = booking.booking_details;
+                      const bookingDays = details?.booking_days || 1;
+                      const hasEndDate = details?.booking_date_end;
+                      
+                      // Prioritas pengambilan waktu mulai: booking_details > booking table > fallback
+                      let startTime = '09:00';
+                      if (details?.booking_time) {
+                        startTime = details.booking_time;
+                      } else if (booking.booking_time) {
+                        startTime = booking.booking_time;
+                      }
+                      
+                      // Prioritas pengambilan waktu selesai
+                      let endTime = '17:00';
+                      if (details?.booking_time_end) {
+                        endTime = details.booking_time_end;
+                      } else if (booking.booking_time_end) {
+                        endTime = booking.booking_time_end;
+                      }
+                      
+                      return (
+                        <tr key={index} className="border-b">
+                          <td className="py-3 px-3 text-sm text-gray-900">
+                            {service}
+                            {bookingDays > 1 && <span className="ml-2 text-blue-600 font-semibold">x{bookingDays}</span>}
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                            {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                            <span className="font-semibold">{startTime}</span>
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                            {hasEndDate ? (
+                              <>
+                                {new Date(details.booking_date_end).toLocaleDateString('id-ID')}<br/>
+                                <span className="font-semibold">{endTime}</span>
+                              </>
+                            ) : (
+                              <>
+                                {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                                <span className="font-semibold">{endTime}</span>
+                              </>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-900 text-right">Rp {Math.round(amounts.subtotal).toLocaleString('id-ID')}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                  
+                  {/* Additional Fees */}
+                  {amounts.additional_fees && amounts.additional_fees.length > 0 && amounts.additional_fees.map((fee, index) => (
+                    <tr key={`fee-${index}`} className="border-b">
+                      <td className="py-3 px-3 text-sm text-gray-900">{fee.description}</td>
+                      <td className="py-3 px-3 text-sm text-gray-600 text-center">-</td>
+                      <td className="py-3 px-3 text-sm text-gray-600 text-center">-</td>
+                      <td className="py-3 px-3 text-sm text-gray-900 text-right">Rp {Math.round(fee.amount).toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Totals */}
+              <div className="flex justify-end mb-6">
+                <div className="w-72 space-y-2">
+                  {/* Services Subtotal */}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Subtotal Layanan:</span>
+                    <span className="font-semibold">Rp {Math.round(amounts.subtotal).toLocaleString('id-ID')}</span>
+                  </div>
+                  
+                  {/* Discount */}
+                  {amounts.discount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Diskon:</span>
+                      <span className="font-semibold text-green-600">-Rp {Math.round(amounts.discount).toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  
+                  {/* Subtotal after discount (before tax) */}
+                  {amounts.discount > 0 && (
+                    <div className="flex justify-between text-sm border-t pt-2">
+                      <span className="text-gray-600">Subtotal setelah Diskon:</span>
+                      <span className="font-semibold">Rp {Math.round(amounts.subtotalAfterDiscount).toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  
+                  {/* Tax */}
+                  {amounts.tax_percentage > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">PPN ({amounts.tax_percentage}%):</span>
+                      <span className="font-semibold">Rp {Math.round(amounts.tax).toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  
+                  {/* Additional Fees Total */}
+                  {amounts.additionalFeesTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Total Biaya Tambahan:</span>
+                      <span className="font-semibold">Rp {Math.round(amounts.additionalFeesTotal).toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  
+                  {/* Grand Total */}
+                  <div className="flex justify-between text-base font-bold border-t-2 pt-2 mt-2">
+                    <span className="text-gray-900">TOTAL KESELURUHAN:</span>
+                    <span className="text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                  </div>
+                  
+                  {/* Payment Information */}
+                  {invoiceType === 'dp' && (
+                    <>
+                      <div className="border-t pt-2 mt-2"></div>
+                      <div className="flex justify-between text-sm bg-orange-50 p-2 rounded">
+                        <span className="text-gray-700 font-medium">DP yang harus dibayar:</span>
+                        <span className="font-bold text-orange-600">Rp {Math.round(amounts.dp).toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Sisa Pembayaran:</span>
+                        <span className="font-semibold text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
+                      </div>
+                    </>
+                  )}
+                  {invoiceType === 'pelunasan' && (
+                    <>
+                      <div className="border-t pt-2 mt-2"></div>
+                      <div className="flex justify-between text-sm text-gray-500 italic">
+                        <span>Sudah Dibayar (DP):</span>
+                        <span>-Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="flex justify-between bg-red-50 p-2 rounded">
+                        <span className="font-bold text-gray-900">Sisa yang Harus Dibayar:</span>
+                        <span className="font-bold text-lg text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
+                      </div>
+                    </>
+                  )}
+                  {invoiceType === 'penuh' && (
+                    <>
+                      <div className="border-t pt-2 mt-2"></div>
+                      <div className="flex justify-between bg-green-50 p-2 rounded">
+                        <span className="font-bold text-gray-900">Total Pembayaran Penuh:</span>
+                        <span className="font-bold text-lg text-green-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Payment Info - Ultra Compact */}
+              {companySettings?.bank_name && (
+                <div className="border-t pt-4">
+                  <div className="bg-gray-50 border border-gray-300 rounded p-2 mb-2">
+                    <h3 className="text-xs font-bold text-gray-900 mb-1.5">Informasi Pembayaran</h3>
+                    
+                    <div className="space-y-0.5 text-xs mb-2">
+                      <div>
+                        <span className="text-gray-700">Status: </span>
+                        <span className="font-bold text-gray-900">
+                          {invoiceType === 'dp' ? 'Down Payment' : invoiceType === 'pelunasan' ? 'Pelunasan' : 'Lunas'}
+                        </span>
+                      </div>
+                      
+                      <div>
+                        <span className="text-gray-700">Sudah Dibayar: </span>
+                        <span className="font-bold text-gray-900">
+                          Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Sisa Pembayaran Box - Orange Highlight Compact */}
+                    <div className="bg-orange-100 border border-orange-400 rounded p-2 text-center mb-2">
+                      <p className="text-xs font-medium text-orange-900">Sisa pembayaran yang harus ditransfer</p>
+                      <p className="text-lg font-bold text-orange-600">
+                        Rp {Math.round(getInvoiceAmount()).toLocaleString('id-ID')}
+                      </p>
+                    </div>
+
+                    {/* Transfer Bank Section - Horizontal Grid Layout */}
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-900 mb-1">Transfer Bank:</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {companySettings.bank_name && (
+                          <div className="bg-white border border-gray-300 rounded p-1.5">
+                            <div className="text-xs">
+                              <span className="text-gray-700">Bank: </span>
+                              <span className="font-bold text-gray-900">{companySettings.bank_name}</span>
+                            </div>
+                            <div className="text-xs">
+                              <span className="text-gray-700">No. Rekening: </span>
+                              <span className="font-bold text-gray-900">{companySettings.account_number || '-'}</span>
+                            </div>
+                            <div className="text-xs">
+                              <span className="text-gray-700">A.n: </span>
+                              <span className="font-bold text-gray-900">{companySettings.account_holder_name || '-'}</span>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {companySettings.bank_name_alt && (
+                          <div className="bg-white border border-gray-300 rounded p-1.5">
+                            <div className="text-xs">
+                              <span className="text-gray-700">Bank: </span>
+                              <span className="font-bold text-gray-900">{companySettings.bank_name_alt}</span>
+                            </div>
+                            <div className="text-xs">
+                              <span className="text-gray-700">No. Rekening: </span>
+                              <span className="font-bold text-gray-900">{companySettings.account_number_alt || '-'}</span>
+                            </div>
+                            <div className="text-xs">
+                              <span className="text-gray-700">A.n: </span>
+                              <span className="font-bold text-gray-900">{companySettings.account_holder_name_alt || '-'}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Instructions - Ultra Compact */}
+                  <div className="bg-orange-50 border border-orange-400 rounded p-1.5 mb-1">
+                    <h4 className="text-xs font-bold text-gray-900">Instruksi Pembayaran:</h4>
+                    <p className="text-xs text-gray-800">
+                      Silakan transfer ke rekening di atas dan kirimkan bukti transfer untuk konfirmasi pembayaran.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3 flex-shrink-0">
+          <Button variant="secondary" onClick={onClose}>
+            Tutup
+          </Button>
+          {invoiceType && (
+            <Button 
+              variant="primary" 
+              onClick={handleSaveInvoice}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Menyimpan...' : 'Save Invoice'}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Hidden Invoice Template for Download - Compact Single Page */}
+      {invoiceType && (
+        <div className="fixed" style={{ left: '-9999px', top: 0 }}>
+          <div ref={invoiceRef} className="bg-white p-8" style={{ width: '210mm', maxHeight: '297mm', fontFamily: "'Times New Roman', Times, serif" }}>
+            {/* Header with Logo - Compact */}
+            <div className="flex justify-between items-start mb-4 pb-3 border-b-2 border-gray-300">
+              <div>
+                {companySettings?.company_logo_url && (
+                  <img src={companySettings.company_logo_url} alt="Company Logo" className="h-20 mb-3 object-contain" />
+                )}
+                <h1 className="text-2xl font-bold text-gray-900">{companySettings?.company_name || 'Nama Perusahaan'}</h1>
+                {companySettings?.company_address && <p className="text-xs text-gray-600 mt-1">{companySettings.company_address}</p>}
+                {companySettings?.company_phone && <p className="text-xs text-gray-600">Kontak: {companySettings.company_phone}</p>}
+                {companySettings?.company_email && <p className="text-xs text-gray-600">Email: {companySettings.company_email}</p>}
+              </div>
+              <div className="text-right">
+                <h2 className="text-3xl font-bold text-gray-900">INVOICE</h2>
+                <p className="text-sm text-gray-600 mt-1">{invoiceNumber}</p>
+              </div>
+            </div>
+
+            {/* Bill To & Invoice Info - Compact & Clean */}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <h3 className="text-xs font-bold text-gray-700 mb-1">Bill To:</h3>
+                <p className="text-sm font-bold text-gray-900">{booking.client_name}</p>
+                <p className="text-xs text-gray-600">{formatPhoneNumber(booking.contact)}</p>
+                {(booking.address || booking.location) && (
+                  <p className="text-xs text-gray-600 mt-0.5">📍 {booking.address || booking.location}</p>
+                )}
+              </div>
+              <div className="text-right">
+                <table className="text-xs ml-auto">
+                  <tbody>
+                    <tr>
+                      <td className="text-gray-600 pr-2 py-0.5">Tanggal Invoice:</td>
+                      <td className="font-semibold text-gray-900">{new Date(invoiceDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    </tr>
+                    <tr>
+                      <td className="text-gray-600 pr-2 py-0.5">Jatuh Tempo:</td>
+                      <td className="font-semibold text-gray-900">{new Date(dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    </tr>
+                    <tr>
+                      <td className="text-gray-600 pr-2 py-0.5">Tanggal Mulai:</td>
+                      <td className="font-semibold text-gray-900">
+                        {new Date(booking.booking_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {(bookingDetails?.booking_time || booking.booking_time) && ` - ${bookingDetails?.booking_time || booking.booking_time}`}
+                      </td>
+                    </tr>
+                    {bookingDetails?.booking_date_end && (
+                      <tr>
+                        <td className="text-gray-600 pr-2 py-0.5">Tanggal Selesai:</td>
+                        <td className="font-semibold text-gray-900">
+                          {new Date(bookingDetails.booking_date_end).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {bookingDetails.booking_time_end && ` - ${bookingDetails.booking_time_end}`}
+                        </td>
+                      </tr>
+                    )}
+                    {bookingDetails?.booking_days && bookingDetails.booking_days > 1 && (
+                      <tr>
+                        <td className="text-gray-600 pr-2 py-0.5">Durasi:</td>
+                        <td className="font-semibold text-gray-900">{bookingDetails.booking_days} Hari</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Services Table - Compact */}
+            <table className="w-full mb-4" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+              <thead>
+                <tr className="bg-gray-100 border-b border-gray-300">
+                  <th className="text-left py-2 px-3 text-xs font-bold text-gray-700">Deskripsi Layanan</th>
+                  <th className="text-center py-2 px-3 text-xs font-bold text-gray-700">Tanggal & Waktu Mulai</th>
+                  <th className="text-center py-2 px-3 text-xs font-bold text-gray-700">Tanggal & Waktu Selesai</th>
+                  <th className="text-right py-2 px-3 text-xs font-bold text-gray-700">Jumlah</th>
+                </tr>
+              </thead>
+              <tbody>
+                {amounts.services && amounts.services.length > 0 ? (
+                  amounts.services.map((service, index) => {
+                    const details = booking.booking_details;
+                    const bookingDays = details?.booking_days || 1;
+                    const hasEndDate = details?.booking_date_end;
+                    
+                    // Debug log untuk melihat data yang tersedia
+                    console.log('Service Index:', index);
+                    console.log('details?.booking_time:', details?.booking_time);
+                    console.log('booking.booking_time:', booking.booking_time);
+                    
+                    // Prioritas pengambilan waktu mulai: booking_details > booking table > fallback
+                    let startTime = '09:00'; // default fallback
+                    if (details?.booking_time) {
+                      startTime = details.booking_time;
+                    } else if (booking.booking_time) {
+                      startTime = booking.booking_time;
+                    }
+                    
+                    // Prioritas pengambilan waktu selesai
+                    let endTime = '17:00'; // default fallback
+                    if (details?.booking_time_end) {
+                      endTime = details.booking_time_end;
+                    } else if (booking.booking_time_end) {
+                      endTime = booking.booking_time_end;
+                    }
+                    
+                    console.log('Final startTime:', startTime);
+                    console.log('Final endTime:', endTime);
+                    
+                    return (
+                      <tr key={index} className="border-b border-gray-200">
+                        <td className="py-2 px-3 text-xs">
+                          <div className="font-semibold text-gray-900">
+                            {service.service_name}
+                            {bookingDays > 1 && <span className="ml-2 text-blue-600 font-bold">x{bookingDays}</span>}
+                          </div>
+                          <div className="text-xs text-gray-500">{service.description || ''}</div>
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-600 text-center">
+                          {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                          <span className="font-semibold">{startTime}</span>
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-600 text-center">
+                          {hasEndDate ? (
+                            <>
+                              {new Date(details.booking_date_end).toLocaleDateString('id-ID')}<br/>
+                              <span className="font-semibold">{endTime}</span>
+                            </>
+                          ) : (
+                            <>
+                              {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                              <span className="font-semibold">{endTime}</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-xs font-semibold text-gray-900 text-right">
+                          Rp {Math.round(service.custom_price).toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr className="border-b border-gray-200">
+                    <td className="py-2 px-3 text-xs">
+                      <div className="font-semibold text-gray-900">
+                        {booking.service_name}
+                        {(booking.booking_details?.booking_days > 1) && (
+                          <span className="ml-2 text-blue-600 font-bold">x{booking.booking_details.booking_days}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-xs text-gray-600 text-center">
+                      {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                      <span className="font-semibold">{booking.booking_details?.booking_time || booking.booking_time || '09:00'}</span>
+                    </td>
+                    <td className="py-2 px-3 text-xs text-gray-600 text-center">
+                      {booking.booking_details?.booking_date_end ? (
+                        <>
+                          {new Date(booking.booking_details.booking_date_end).toLocaleDateString('id-ID')}<br/>
+                          <span className="font-semibold">{booking.booking_details.booking_time_end || booking.booking_time_end || '17:00'}</span>
+                        </>
+                      ) : (
+                        <>
+                          {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
+                          <span className="font-semibold">{booking.booking_details?.booking_time_end || booking.booking_time_end || '17:00'}</span>
+                        </>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-xs font-semibold text-gray-900 text-right">
+                      Rp {Math.round(amounts.subtotal).toLocaleString('id-ID')}
+                    </td>
+                  </tr>
+                )}
+                
+                {/* Additional Fees */}
+                {amounts.additional_fees && amounts.additional_fees.length > 0 && amounts.additional_fees.map((fee, index) => (
+                  <tr key={`fee-${index}`} className="border-b border-gray-200">
+                    <td className="py-2 px-3 text-xs font-semibold text-gray-900">{fee.description}</td>
+                    <td className="py-2 px-3 text-xs text-gray-600 text-center">-</td>
+                    <td className="py-2 px-3 text-xs text-gray-600 text-center">-</td>
+                    <td className="py-2 px-3 text-xs font-semibold text-gray-900 text-right">
+                      Rp {Math.round(fee.amount).toLocaleString('id-ID')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Totals Section - Compact */}
+            <div className="flex justify-end mb-3">
+              <div className="w-80">
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between py-1">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="font-semibold text-gray-900">Rp {Math.round(amounts.subtotal).toLocaleString('id-ID')}</span>
+                  </div>
+                  
+                  {amounts.discount > 0 && (
+                    <div className="flex justify-between py-1">
+                      <span className="text-gray-600">Diskon:</span>
+                      <span className="font-semibold text-green-600">-Rp {Math.round(amounts.discount).toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  
+                  {amounts.tax_percentage > 0 && (
+                    <div className="flex justify-between py-1">
+                      <span className="text-gray-600">PPN ({amounts.tax_percentage}%):</span>
+                      <span className="font-semibold text-gray-900">Rp {Math.round(amounts.tax).toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  
+                  <div className="border-t border-gray-300 pt-2 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-bold text-gray-900">Sisa pembayaran:</span>
+                      <span className="text-lg font-bold text-gray-900">
+                        Rp {Math.round(invoiceType === 'dp' ? amounts.remaining : invoiceType === 'pelunasan' ? amounts.remaining : amounts.total).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Informasi Pembayaran - Ultra Compact */}
+            <div className="bg-gray-50 border border-gray-300 rounded p-2 mb-2">
+              <h3 className="text-xs font-bold text-gray-900 mb-1.5">Informasi Pembayaran</h3>
+              
+              <div className="space-y-0.5 text-xs mb-2">
+                <div>
+                  <span className="text-gray-700">Status: </span>
+                  <span className="font-bold text-gray-900">
+                    {invoiceType === 'dp' ? 'Down Payment' : invoiceType === 'pelunasan' ? 'Pelunasan' : 'Lunas'}
+                  </span>
+                </div>
+                
+                <div>
+                  <span className="text-gray-700">Sudah Dibayar: </span>
+                  <span className="font-bold text-gray-900">
+                    Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Sisa Pembayaran Box - Orange Highlight Compact */}
+              <div className="bg-orange-100 border border-orange-400 rounded p-2 text-center mb-2">
+                <p className="text-xs font-medium text-orange-900">Sisa pembayaran yang harus ditransfer</p>
+                <p className="text-lg font-bold text-orange-600">
+                  Rp {Math.round(getInvoiceAmount()).toLocaleString('id-ID')}
+                </p>
+              </div>
+
+              {/* Transfer Bank Section - Horizontal Grid Layout */}
+              {(companySettings?.bank_name || companySettings?.bank_name_alt) && (
+                <div>
+                  <h4 className="text-xs font-bold text-gray-900 mb-1">Transfer Bank:</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {companySettings.bank_name && (
+                      <div className="bg-white border border-gray-300 rounded p-1.5">
+                        <div className="text-xs">
+                          <span className="text-gray-700">Bank: </span>
+                          <span className="font-bold text-gray-900">{companySettings.bank_name}</span>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-700">No. Rekening: </span>
+                          <span className="font-bold text-gray-900">{companySettings.account_number || '-'}</span>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-700">A.n: </span>
+                          <span className="font-bold text-gray-900">{companySettings.account_holder_name || '-'}</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {companySettings.bank_name_alt && (
+                      <div className="bg-white border border-gray-300 rounded p-1.5">
+                        <div className="text-xs">
+                          <span className="text-gray-700">Bank: </span>
+                          <span className="font-bold text-gray-900">{companySettings.bank_name_alt}</span>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-700">No. Rekening: </span>
+                          <span className="font-bold text-gray-900">{companySettings.account_number_alt || '-'}</span>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-700">A.n: </span>
+                          <span className="font-bold text-gray-900">{companySettings.account_holder_name_alt || '-'}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Instructions - Ultra Compact */}
+            <div className="bg-orange-50 border border-orange-400 rounded p-1.5 mb-1">
+              <h4 className="text-xs font-bold text-gray-900">Instruksi Pembayaran:</h4>
+              <p className="text-xs text-gray-800">
+                Silakan transfer ke rekening di atas dan kirimkan bukti transfer untuk konfirmasi pembayaran.
+              </p>
+            </div>
+
+            {/* Footer - Clean */}
+            <div className="text-center text-xs text-gray-500 border-t pt-2">
+              <p>Invoice otomatis - {companySettings?.company_name || 'Nama Perusahaan'}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Download Modal */}
+      {showDownloadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Download Invoice</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Nama File:
+              </label>
+              <input
+                type="text"
+                value={fileName}
+                onChange={(e) => setFileName(e.target.value)}
+                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Masukkan nama file"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                File akan disimpan sebagai: <span className="font-semibold">{fileName}.{downloadFormat === 'pdf' ? 'pdf' : 'jpg'}</span>
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Format:
+              </label>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDownloadFormat('pdf')}
+                  className={`flex-1 py-2.5 px-4 rounded-lg border-2 font-semibold transition-all ${
+                    downloadFormat === 'pdf'
+                      ? 'bg-blue-500 border-blue-500 text-white'
+                      : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
+                  }`}
+                >
+                  📄 PDF
+                </button>
+                <button
+                  onClick={() => setDownloadFormat('jpeg')}
+                  className={`flex-1 py-2.5 px-4 rounded-lg border-2 font-semibold transition-all ${
+                    downloadFormat === 'jpeg'
+                      ? 'bg-blue-500 border-blue-500 text-white'
+                      : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
+                  }`}
+                >
+                  🖼️ JPEG
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setShowDownloadModal(false)}
+                className="flex-1"
+              >
+                Batal
+              </Button>
+              <Button
+                variant="primary"
+                onClick={executeDownload}
+                className="flex-1"
+              >
+                Download
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default GenerateInvoiceModal;

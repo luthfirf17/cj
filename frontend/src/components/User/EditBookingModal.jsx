@@ -1,0 +1,1521 @@
+import React, { useState, useEffect, useRef } from 'react';
+import Modal from '../Common/Modal';
+import Button from '../Common/Button';
+import Input from '../Common/Input';
+import Select from '../Common/Select';
+import TextArea from '../Common/TextArea';
+import { FiDollarSign, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMapPin } from 'react-icons/fi';
+import api from '../../services/api';
+
+const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
+  const [loading, setLoading] = useState(false);
+  const [services, setServices] = useState([]);
+  const [formData, setFormData] = useState({
+    client_name: '',
+    contact: '',
+    address: '',
+    booking_date: '',
+    booking_date_end: '',
+    booking_time: '',
+    booking_time_end: '',
+    booking_days: 1,
+    service_mode: 'single', // single or multiple
+    selected_services: [{ service_id: '', custom_price: 0 }],
+    location_name: '',
+    location_map_url: '',
+    status: 'Dijadwalkan',
+    payment_status: 'Belum Bayar',
+    total_amount: 0,
+    amount_paid: 0,
+    discount: 0,
+    tax_percentage: 0,
+    additional_fees: [],
+    notes: '',
+  });
+
+  const [serviceSearch, setServiceSearch] = useState(['']);
+  const [showServiceDropdown, setShowServiceDropdown] = useState([false]);
+  const [activeDropdownIndex, setActiveDropdownIndex] = useState(null);
+  
+  // Add Service Modal State
+  const [showAddServiceModal, setShowAddServiceModal] = useState(false);
+  const [newServiceData, setNewServiceData] = useState({
+    name: '',
+    description: '',
+    default_price: 0,
+  });
+
+  // Edit Service Modal State
+  const [showEditServiceModal, setShowEditServiceModal] = useState(false);
+  const [editServiceData, setEditServiceData] = useState({
+    id: null,
+    name: '',
+    description: '',
+    default_price: 0,
+  });
+
+  const [errors, setErrors] = useState({});
+  const dropdownRefs = useRef([]);
+
+  // Fetch booking detail and services
+  useEffect(() => {
+    if (isOpen && bookingId) {
+      // Fetch services first, then booking detail with services list
+      const loadData = async () => {
+        setLoading(true);
+        const servicesList = await fetchServices();
+        await fetchBookingDetail(servicesList);
+        setLoading(false);
+      };
+      loadData();
+    }
+  }, [isOpen, bookingId]);
+
+  const fetchBookingDetail = async (servicesList = []) => {
+    try {
+      const response = await api.get(`/user/bookings/${bookingId}`);
+      
+      if (response.data.success) {
+        const booking = response.data.data;
+        
+        console.log('📥 Fetched booking detail:', {
+          id: booking.id,
+          service_id: booking.service_id,
+          service_name: booking.service_name,
+          notes: booking.notes?.substring(0, 100),
+          availableServices: servicesList.length
+        });
+        
+        // Convert status from English to Indonesian
+        let displayStatus = 'Dijadwalkan';
+        if (booking.status === 'completed') displayStatus = 'Selesai';
+        else if (booking.status === 'cancelled') displayStatus = 'Dibatalkan';
+        else if (booking.status === 'confirmed') displayStatus = 'Dijadwalkan';
+        
+        // Convert payment_status to Indonesian
+        let displayPaymentStatus = 'Belum Bayar';
+        if (booking.payment_status === 'paid') displayPaymentStatus = 'Lunas';
+        else if (booking.payment_status === 'partial') displayPaymentStatus = 'DP';
+        
+        // Parse booking details from notes if JSON format
+        let bookingDetails = null;
+        let userNotes = '';
+        try {
+          if (booking.notes && booking.notes.trim().startsWith('{')) {
+            bookingDetails = JSON.parse(booking.notes);
+            userNotes = bookingDetails.user_notes || ''; // Extract user notes from JSON
+          } else {
+            userNotes = booking.notes || ''; // Use as plain text if not JSON
+          }
+        } catch (parseError) {
+          console.log('Notes is not JSON format, using as plain text');
+          userNotes = booking.notes || '';
+        }
+        
+        // Determine selected services
+        let selectedServices = [];
+        
+        if (bookingDetails?.services && Array.isArray(bookingDetails.services) && bookingDetails.services.length > 0) {
+          // New format: services array in booking_details
+          selectedServices = bookingDetails.services.map(s => ({
+            service_id: s.service_id?.toString() || '',
+            custom_price: parseFloat(s.custom_price) || 0
+          }));
+        } else if (booking.service_id) {
+          // Legacy format: single service_id from booking
+          // Ensure service_id exists by checking against fetched services
+          const serviceExists = servicesList.find(s => s.id === booking.service_id);
+          
+          selectedServices = [{ 
+            service_id: serviceExists ? booking.service_id.toString() : '', 
+            custom_price: parseFloat(booking.total_amount) || 0 
+          }];
+          
+          console.log('📝 Legacy booking format detected:', {
+            bookingId: booking.id,
+            serviceId: booking.service_id,
+            serviceName: booking.service_name,
+            availableServices: servicesList.map(s => ({id: s.id, name: s.name})),
+            serviceExists: !!serviceExists,
+            mappedServiceId: selectedServices[0].service_id
+          });
+          
+          if (!serviceExists) {
+            console.error('❌ Service ID not found in available services!', {
+              requestedServiceId: booking.service_id,
+              availableServiceIds: servicesList.map(s => s.id)
+            });
+          }
+        } else {
+          // No service information available
+          console.warn('⚠️ No service information found in booking:', booking.id);
+          selectedServices = [{ service_id: '', custom_price: 0 }];
+        }
+
+        // Use parsed details if available, otherwise fall back to legacy format
+        setFormData({
+          client_name: booking.client_name,
+          contact: booking.contact,
+          address: booking.address || '',
+          booking_date: booking.booking_date,
+          booking_date_end: bookingDetails?.booking_date_end || booking.booking_date,
+          booking_time: booking.booking_time,
+          booking_time_end: bookingDetails?.booking_time_end || booking.booking_time,
+          booking_days: bookingDetails?.booking_days || 1,
+          service_mode: selectedServices.length > 1 ? 'multiple' : 'single',
+          selected_services: selectedServices,
+          location_name: booking.location_name || '',
+          location_map_url: booking.location_map_url || '',
+          status: displayStatus,
+          payment_status: displayPaymentStatus,
+          total_amount: parseFloat(booking.total_amount) || 0,
+          amount_paid: parseFloat(booking.amount_paid) || 0,
+          discount: bookingDetails?.discount || 0,
+          tax_percentage: bookingDetails?.tax_percentage || 0,
+          additional_fees: bookingDetails?.additional_fees || [],
+          notes: userNotes, // Use extracted user notes
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching booking detail:', error);
+      alert('Gagal memuat detail booking');
+    }
+  };
+
+  const fetchServices = async () => {
+    try {
+      const response = await api.get('/user/services');
+      
+      if (response.data.success) {
+        const servicesList = response.data.data;
+        setServices(servicesList);
+        console.log('📋 Fetched services:', servicesList.length, 'services', servicesList.map(s => `ID:${s.id} - ${s.name}`));
+        return servicesList; // Return for immediate use
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching services:', error);
+      return [];
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (activeDropdownIndex !== null && 
+          dropdownRefs.current[activeDropdownIndex] && 
+          !dropdownRefs.current[activeDropdownIndex].contains(event.target)) {
+        const newShowDropdown = [...showServiceDropdown];
+        newShowDropdown[activeDropdownIndex] = false;
+        setShowServiceDropdown(newShowDropdown);
+        setActiveDropdownIndex(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeDropdownIndex, showServiceDropdown]);
+
+  // Calculate booking days from date range
+  useEffect(() => {
+    if (formData.booking_date) {
+      if (formData.booking_date_end) {
+        // If end date is provided, calculate days
+        const startDate = new Date(formData.booking_date);
+        const endDate = new Date(formData.booking_date_end);
+        
+        // Calculate difference in days
+        const diffTime = Math.abs(endDate - startDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end date
+        
+        setFormData(prev => ({ ...prev, booking_days: diffDays }));
+      } else {
+        // If end date is not provided, default to 1 day
+        setFormData(prev => ({ ...prev, booking_days: 1 }));
+      }
+    }
+  }, [formData.booking_date, formData.booking_date_end]);
+
+  // Calculate total amount
+  useEffect(() => {
+    let subtotal = 0;
+
+    formData.selected_services.forEach(service => {
+      if (service.service_id) {
+        const serviceData = services.find(s => s.id === parseInt(service.service_id));
+        const price = service.custom_price || (serviceData ? serviceData.default_price : 0);
+        subtotal += price;
+      }
+    });
+
+    // Multiply by booking days
+    const bookingDays = Math.max(1, parseInt(formData.booking_days) || 1);
+    subtotal = subtotal * bookingDays;
+
+    subtotal = subtotal - (formData.discount || 0);
+    const tax = (subtotal * (formData.tax_percentage || 0)) / 100;
+    subtotal = subtotal + tax;
+
+    formData.additional_fees.forEach(fee => {
+      subtotal += parseFloat(fee.amount) || 0;
+    });
+
+    setFormData(prev => ({ ...prev, total_amount: Math.max(0, subtotal) }));
+  }, [formData.selected_services, formData.discount, formData.tax_percentage, formData.additional_fees, formData.booking_days, services]);
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    
+    if (type === 'checkbox') {
+      setFormData(prev => ({ ...prev, [name]: checked }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+
+    // Auto-adjust amount_paid based on payment_status
+    if (name === 'payment_status') {
+      if (value === 'Belum Bayar') {
+        // Set amount_paid to 0 if status is "Belum Bayar"
+        setFormData(prev => ({ ...prev, amount_paid: 0 }));
+      } else if (value === 'Lunas') {
+        // Set amount_paid to total_amount if status is "Lunas"
+        setFormData(prev => ({ ...prev, amount_paid: prev.total_amount }));
+      }
+      // For 'DP', let user input the amount manually
+    }
+  };
+
+  // Handle service mode toggle
+  const handleServiceModeChange = (mode) => {
+    setFormData(prev => ({
+      ...prev,
+      service_mode: mode,
+      selected_services: mode === 'single' ? [{ service_id: prev.selected_services[0]?.service_id || '', custom_price: prev.selected_services[0]?.custom_price || 0 }] : prev.selected_services,
+    }));
+  };
+
+  // Add new service row
+  const addServiceRow = () => {
+    setFormData(prev => ({
+      ...prev,
+      selected_services: [...prev.selected_services, { service_id: '', custom_price: 0 }],
+    }));
+    setServiceSearch(prev => [...prev, '']);
+    setShowServiceDropdown(prev => [...prev, false]);
+  };
+
+  // Remove service row
+  const removeServiceRow = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      selected_services: prev.selected_services.filter((_, i) => i !== index),
+    }));
+    setServiceSearch(prev => prev.filter((_, i) => i !== index));
+    setShowServiceDropdown(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Update service in row
+  const updateServiceRow = (index, field, value) => {
+    setFormData(prev => {
+      const updatedServices = [...prev.selected_services];
+      updatedServices[index] = { ...updatedServices[index], [field]: value };
+      return { ...prev, selected_services: updatedServices };
+    });
+  };
+
+  // Add additional fee
+  const addAdditionalFee = () => {
+    setFormData(prev => ({
+      ...prev,
+      additional_fees: [...prev.additional_fees, { description: '', amount: 0 }],
+    }));
+  };
+
+  // Remove additional fee
+  const removeAdditionalFee = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      additional_fees: prev.additional_fees.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Update additional fee
+  const updateAdditionalFee = (index, field, value) => {
+    setFormData(prev => {
+      const updatedFees = [...prev.additional_fees];
+      updatedFees[index] = { ...updatedFees[index], [field]: value };
+      return { ...prev, additional_fees: updatedFees };
+    });
+  };
+
+  // Handle edit service
+  const handleEditService = (service) => {
+    setEditServiceData({
+      id: service.id,
+      name: service.name,
+      description: service.description || '',
+      default_price: service.default_price || 0,
+    });
+    setShowEditServiceModal(true);
+  };
+
+  // Handle delete service
+  const handleDeleteService = async (serviceId) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus layanan ini?')) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/user/services/${serviceId}`);
+
+      if (response.data.success) {
+        alert('Layanan berhasil dihapus!');
+        fetchServices();
+        setShowServiceDropdown(showServiceDropdown.map(() => false));
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      console.error('Error deleting service:', error);
+      alert('Gagal menghapus layanan. Silakan coba lagi.');
+    }
+  };
+
+  const validate = () => {
+    const newErrors = {};
+
+    // Booking date validation
+    if (!formData.booking_date) {
+      newErrors.booking_date = 'Tanggal mulai wajib diisi';
+    }
+    
+    // Time validation - both required
+    if (!formData.booking_time) {
+      newErrors.booking_time = 'Waktu mulai wajib diisi';
+    }
+    if (!formData.booking_time_end) {
+      newErrors.booking_time_end = 'Waktu selesai wajib diisi';
+    }
+
+    // Location validation
+    if (!formData.location_name.trim()) {
+      newErrors.location_name = 'Nama lokasi wajib diisi';
+    }
+    
+    // Validate date and time range
+    if (formData.booking_date && formData.booking_time && formData.booking_time_end) {
+      // Compare time strings (format: "HH:MM")
+      const startTime = formData.booking_time;
+      const endTime = formData.booking_time_end;
+      
+      // If booking_date_end is not filled, it means single day booking
+      if (formData.booking_date_end) {
+        const startDate = new Date(formData.booking_date);
+        const endDate = new Date(formData.booking_date_end);
+        
+        // End date must be >= start date
+        if (endDate < startDate) {
+          newErrors.booking_date_end = 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai';
+        }
+        
+        // If same day, end time must be > start time
+        if (startDate.toDateString() === endDate.toDateString()) {
+          if (endTime <= startTime) {
+            newErrors.booking_time_end = 'Waktu selesai harus lebih dari waktu mulai (pada hari yang sama)';
+          }
+        }
+        // If different days (multi-day booking), time can wrap to next day - no validation needed
+      } else {
+        // Single day booking - end time must be > start time
+        if (endTime <= startTime) {
+          newErrors.booking_time_end = 'Waktu selesai harus lebih dari waktu mulai';
+        }
+      }
+    }
+    
+    const hasValidService = formData.selected_services.some(s => s.service_id);
+    if (!hasValidService) {
+      newErrors.selected_services = 'Pilih minimal 1 layanan';
+    }
+    
+    if (formData.amount_paid < 0) newErrors.amount_paid = 'Jumlah tidak valid';
+    if (formData.amount_paid > formData.total_amount) {
+      newErrors.amount_paid = 'Jumlah dibayar tidak boleh melebihi total';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!validate()) return;
+
+    setLoading(true);
+    try {
+      const firstService = formData.selected_services.find(s => s.service_id);
+      
+      // Validate that service_id exists in services list
+      let validServiceId = null;
+      if (firstService && firstService.service_id) {
+        const serviceExists = services.find(srv => srv.id === parseInt(firstService.service_id));
+        if (serviceExists) {
+          validServiceId = parseInt(firstService.service_id);
+        }
+      }
+      
+      // Create detailed booking information JSON
+      const bookingDetails = {
+        user_notes: formData.notes,
+        booking_date: formData.booking_date,
+        booking_time: formData.booking_time,
+        booking_date_end: formData.booking_date_end,
+        booking_time_end: formData.booking_time_end,
+        booking_days: formData.booking_days,
+        services: formData.selected_services.filter(s => s.service_id).map(s => ({
+          service_id: s.service_id,
+          service_name: services.find(srv => srv.id === parseInt(s.service_id))?.name || '',
+          custom_price: s.custom_price
+        })),
+        discount: formData.discount,
+        tax_percentage: formData.tax_percentage,
+        additional_fees: formData.additional_fees,
+        payment_status: formData.payment_status,
+        amount_paid: formData.amount_paid
+      };
+      
+      // Convert Indonesian status back to English for backend
+      let backendStatus = 'confirmed';
+      if (formData.status === 'Selesai') backendStatus = 'completed';
+      else if (formData.status === 'Dibatalkan') backendStatus = 'cancelled';
+      else if (formData.status === 'Dijadwalkan') backendStatus = 'confirmed';
+      
+      // Convert Indonesian payment_status back to English for backend
+      let backendPaymentStatus = 'unpaid';
+      if (formData.payment_status === 'Lunas') backendPaymentStatus = 'paid';
+      else if (formData.payment_status === 'DP') backendPaymentStatus = 'partial';
+      else if (formData.payment_status === 'Belum Bayar') backendPaymentStatus = 'unpaid';
+      
+      const response = await api.put(`/user/bookings/${bookingId}`, {
+        service_id: validServiceId, // Use validated service_id or null
+        booking_date: formData.booking_date,
+        booking_time: formData.booking_time,
+        location_name: formData.location_name,
+        location_map_url: formData.location_map_url || null,
+        status: backendStatus,
+        payment_status: backendPaymentStatus,
+        total_amount: parseFloat(formData.total_amount) || 0,
+        amount_paid: parseFloat(formData.amount_paid) || 0,
+        notes: JSON.stringify(bookingDetails),
+      });
+
+      if (response.data.success) {
+        alert('Booking berhasil diupdate!');
+        onSuccess();
+        onClose();
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      console.error('Error updating booking:', error);
+      alert('Gagal mengupdate booking. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Edit Booking"
+      size="lg"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={loading}>
+            Batal
+          </Button>
+          <Button variant="primary" onClick={handleSubmit} loading={loading}>
+            Update Booking
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Client Info (Read Only) */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Informasi Klien</h3>
+          <div className="bg-blue-50 p-4 rounded-lg space-y-2 border border-blue-200">
+            <div className="flex items-start gap-2">
+              <span className="text-sm font-medium text-gray-600 w-20">Nama:</span>
+              <span className="text-sm text-gray-900 font-medium">{formData.client_name}</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-sm font-medium text-gray-600 w-20">Kontak:</span>
+              <span className="text-sm text-gray-900">{formData.contact}</span>
+            </div>
+            {formData.address && (
+              <div className="flex items-start gap-2">
+                <span className="text-sm font-medium text-gray-600 w-20">Alamat:</span>
+                <span className="text-sm text-gray-900">{formData.address}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Booking Information */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Informasi Booking</h3>
+          
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <Input
+              label="Tanggal Mulai"
+              type="date"
+              name="booking_date"
+              value={formData.booking_date}
+              onChange={handleChange}
+              error={errors.booking_date}
+              required
+            />
+            <div>
+              <Input
+                label="Tanggal Selesai (Opsional)"
+                type="date"
+                name="booking_date_end"
+                value={formData.booking_date_end}
+                onChange={handleChange}
+                error={errors.booking_date_end}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Kosongkan jika booking hanya 1 hari
+              </p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <Input
+              label="Waktu Mulai"
+              type="time"
+              name="booking_time"
+              value={formData.booking_time}
+              onChange={handleChange}
+              error={errors.booking_time}
+              required
+            />
+            <Input
+              label="Waktu Selesai"
+              type="time"
+              name="booking_time_end"
+              value={formData.booking_time_end}
+              onChange={handleChange}
+              error={errors.booking_time_end}
+              required
+            />
+          </div>
+
+          {/* Location Information */}
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+              <FiMapPin className="w-4 h-4" />
+              Informasi Lokasi
+            </h4>
+            <div className="grid grid-cols-1 gap-3">
+              <Input
+                label="Nama Lokasi"
+                type="text"
+                name="location_name"
+                value={formData.location_name}
+                onChange={handleChange}
+                error={errors.location_name}
+                placeholder="Contoh: Gedung A Lt. 3, Hotel Grand, dll"
+                required
+              />
+              <div>
+                <Input
+                  label="Link Google Maps (Opsional)"
+                  type="url"
+                  name="location_map_url"
+                  value={formData.location_map_url}
+                  onChange={handleChange}
+                  error={errors.location_map_url}
+                  placeholder="https://maps.google.com/..."
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Opsional - Salin link Google Maps untuk navigasi
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Display calculated days */}
+          {formData.booking_date && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-700">
+                <span className="font-semibold">Durasi: {formData.booking_days} hari</span>
+                {formData.booking_date_end && (
+                  <span className="ml-2 text-xs">
+                    ({new Date(formData.booking_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - {new Date(formData.booking_date_end).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })})
+                  </span>
+                )}
+                {!formData.booking_date_end && (
+                  <span className="ml-2 text-xs">
+                    (Booking 1 hari - {new Date(formData.booking_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })})
+                  </span>
+                )}
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                Harga layanan × {formData.booking_days} hari
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Services Section */}
+        <div>
+          {/* Service Mode Toggle */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Mode Layanan:
+            </label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="service_mode"
+                  checked={formData.service_mode === 'single'}
+                  onChange={() => handleServiceModeChange('single')}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-sm text-gray-700">Single Layanan</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="service_mode"
+                  checked={formData.service_mode === 'multiple'}
+                  onChange={() => handleServiceModeChange('multiple')}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-sm text-gray-700">Multiple Layanan</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Services Selection */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Jenis Layanan <span className="text-red-500">*</span>
+              </label>
+              {formData.service_mode === 'multiple' && (
+                <button
+                  type="button"
+                  onClick={addServiceRow}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                >
+                  <span className="text-lg">+</span> Tambah Layanan
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {formData.selected_services.map((service, index) => {
+                const selectedService = services.find(s => s.id === parseInt(service.service_id));
+                const filteredServices = services.filter(s => 
+                  s.name.toLowerCase().includes((serviceSearch[index] || '').toLowerCase())
+                );
+
+                return (
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Nama Layanan #{index + 1}
+                        </label>
+                        
+                        {/* Custom Dropdown */}
+                        <div className="relative" ref={el => dropdownRefs.current[index] = el}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newShowDropdown = [...showServiceDropdown];
+                              newShowDropdown[index] = !newShowDropdown[index];
+                              setShowServiceDropdown(newShowDropdown);
+                              setActiveDropdownIndex(index);
+                            }}
+                            className="w-full px-3 py-2.5 text-left bg-white border border-gray-300 rounded-lg hover:border-blue-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors flex items-center justify-between"
+                          >
+                            <span className={selectedService ? 'text-gray-900' : 'text-gray-400'}>
+                              {selectedService ? selectedService.name : 'Pilih atau tambah jenis layanan'}
+                            </span>
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+
+                          {/* Dropdown Menu */}
+                          {showServiceDropdown[index] && (
+                            <>
+                              <div 
+                                className="fixed inset-0 z-10" 
+                                onClick={() => {
+                                  const newShowDropdown = [...showServiceDropdown];
+                                  newShowDropdown[index] = false;
+                                  setShowServiceDropdown(newShowDropdown);
+                                }}
+                              />
+                              <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                                {/* Search Input */}
+                                <div className="p-2 border-b border-gray-100">
+                                  <div className="relative">
+                                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                    <input
+                                      type="text"
+                                      value={serviceSearch[index] || ''}
+                                      onChange={(e) => {
+                                        const newSearch = [...serviceSearch];
+                                        newSearch[index] = e.target.value;
+                                        setServiceSearch(newSearch);
+                                      }}
+                                      placeholder="Cari layanan atau ketik untuk menambah..."
+                                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Service List */}
+                                <div className="max-h-60 overflow-y-auto">
+                                  {filteredServices.length > 0 ? (
+                                    filteredServices.map(s => (
+                                      <div
+                                        key={s.id}
+                                        className="hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                                      >
+                                        <div className="flex items-center gap-2 px-3 py-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              updateServiceRow(index, 'service_id', s.id.toString());
+                                              updateServiceRow(index, 'custom_price', s.default_price);
+                                              const newShowDropdown = [...showServiceDropdown];
+                                              newShowDropdown[index] = false;
+                                              setShowServiceDropdown(newShowDropdown);
+                                              const newSearch = [...serviceSearch];
+                                              newSearch[index] = '';
+                                              setServiceSearch(newSearch);
+                                            }}
+                                            className="flex-1 text-left flex items-center justify-between min-w-0"
+                                          >
+                                            <div className="flex-1 min-w-0 pr-3">
+                                              <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                                              {s.description && (
+                                                <div className="text-xs text-gray-500 mt-0.5 truncate">{s.description}</div>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                              <span className="text-sm font-medium text-green-600 whitespace-nowrap">
+                                                Rp {s.default_price?.toLocaleString('id-ID')}
+                                              </span>
+                                              {selectedService?.id === s.id && (
+                                                <FiCheck className="w-4 h-4 text-blue-600" />
+                                              )}
+                                            </div>
+                                          </button>
+                                          
+                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditService(s);
+                                                const newShowDropdown = [...showServiceDropdown];
+                                                newShowDropdown[index] = false;
+                                                setShowServiceDropdown(newShowDropdown);
+                                              }}
+                                              className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                              title="Edit layanan"
+                                            >
+                                              <FiEdit2 className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteService(s.id);
+                                              }}
+                                              className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors"
+                                              title="Hapus layanan"
+                                            >
+                                              <FiTrash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="px-3 py-8 text-center text-gray-500 text-sm">
+                                      Tidak ada layanan ditemukan
+                                    </div>
+                                  )}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowAddServiceModal(true);
+                                    const newShowDropdown = [...showServiceDropdown];
+                                    newShowDropdown[index] = false;
+                                    setShowServiceDropdown(newShowDropdown);
+                                  }}
+                                  className="w-full px-3 py-3 text-left border-t border-gray-100 bg-blue-50 hover:bg-blue-100 transition-colors flex items-center gap-2 text-blue-600 font-medium"
+                                >
+                                  <FiPlus className="w-4 h-4" />
+                                  <span className="text-sm">Tambah Layanan Baru</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {formData.service_mode === 'multiple' && formData.selected_services.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeServiceRow(index)}
+                          className="mt-6 p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Hapus layanan"
+                        >
+                          <FiTrash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    
+                    {selectedService && (
+                      <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-gray-900">
+                              Deskripsi Layanan:
+                            </div>
+                            <div className="text-sm text-blue-600 mt-1">
+                              {selectedService.description || 'Tidak ada deskripsi'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-blue-200">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-700">Harga Layanan (Rp)</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={
+                                  service.custom_price === 0 
+                                    ? '' 
+                                    : (service.custom_price || (services.find(s => s.id === parseInt(service.service_id))?.default_price || '')).toLocaleString('id-ID')
+                                }
+                                onChange={(e) => {
+                                  const value = e.target.value.replace(/\./g, '');
+                                  updateServiceRow(index, 'custom_price', parseFloat(value) || 0);
+                                }}
+                                onFocus={(e) => {
+                                  if (e.target.value === '0') e.target.value = '';
+                                }}
+                                className="w-32 text-right rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {errors.selected_services && (
+              <p className="mt-2 text-sm text-red-600">{errors.selected_services}</p>
+            )}
+          </div>
+
+          <Select
+            label="Status Booking"
+            name="status"
+            value={formData.status}
+            onChange={handleChange}
+            options={[
+              { value: 'Dijadwalkan', label: 'Dijadwalkan' },
+              { value: 'Selesai', label: 'Selesai' },
+              { value: 'Dibatalkan', label: 'Dibatalkan' },
+            ]}
+            required
+          />
+        </div>
+
+        {/* Payment Information */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Informasi Pembayaran</h3>
+          
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Total Biaya Layanan (Rp)
+              </label>
+              <input
+                type="text"
+                value={formData.total_amount.toLocaleString('id-ID')}
+                readOnly
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-gray-900 cursor-not-allowed"
+              />
+              <p className="mt-1 text-xs text-gray-500">Total otomatis dihitung dari semua layanan</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sudah Dibayar (Rp)
+              </label>
+              <input
+                type="text"
+                value={formData.amount_paid === 0 ? '' : formData.amount_paid.toLocaleString('id-ID')}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\./g, '');
+                  handleChange({ target: { name: 'amount_paid', value: parseFloat(value) || 0 } });
+                }}
+                placeholder="0"
+                disabled={formData.payment_status === 'Belum Bayar'}
+                className={`block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 focus:outline-none ${
+                  formData.payment_status === 'Belum Bayar' ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+                }`}
+              />
+              {formData.payment_status === 'Belum Bayar' && (
+                <p className="mt-1 text-xs text-orange-600">Ubah status pembayaran untuk mengisi</p>
+              )}
+              {errors.amount_paid && (
+                <p className="mt-1 text-xs text-red-600">{errors.amount_paid}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Diskon (Rp)
+              </label>
+              <input
+                type="text"
+                value={formData.discount === 0 ? '' : formData.discount.toLocaleString('id-ID')}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\./g, '');
+                  handleChange({ target: { name: 'discount', value: parseFloat(value) || 0 } });
+                }}
+                placeholder="0"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
+              />
+              {formData.discount > 0 && (
+                <p className="mt-1 text-xs text-green-600">
+                  Diskon {((formData.discount / (formData.selected_services.reduce((sum, s) => {
+                    const srv = services.find(srv => srv.id === parseInt(s.service_id));
+                    return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                  }, 0))) * 100).toFixed(1)}% dari total layanan
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                PPN (%)
+              </label>
+              <input
+                type="number"
+                value={formData.tax_percentage === 0 ? '' : formData.tax_percentage}
+                onChange={handleChange}
+                name="tax_percentage"
+                placeholder="0"
+                min="0"
+                max="100"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Additional Fees */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Biaya Tambahan
+              </label>
+              <button
+                type="button"
+                onClick={addAdditionalFee}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+              >
+                <span className="text-lg">+</span> Tambah Biaya
+              </button>
+            </div>
+
+            {formData.additional_fees.length === 0 ? (
+              <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <p className="text-sm text-gray-500">
+                  Belum ada biaya tambahan. Klik "Tambah Biaya" untuk menambahkan.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {formData.additional_fees.map((fee, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={fee.description}
+                        onChange={(e) => updateAdditionalFee(index, 'description', e.target.value)}
+                        placeholder="Nama biaya (misal: Ongkir, Parkir, dll)"
+                        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="w-40">
+                      <input
+                        type="text"
+                        value={fee.amount === 0 ? '' : parseFloat(fee.amount).toLocaleString('id-ID')}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\./g, '');
+                          updateAdditionalFee(index, 'amount', parseFloat(value) || 0);
+                        }}
+                        placeholder="0"
+                        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none text-right"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeAdditionalFee(index)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Hapus biaya"
+                    >
+                      <FiTrash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Status Pembayaran */}
+          <div className="mb-4">
+            <Select
+              label="Status Pembayaran"
+              name="payment_status"
+              value={formData.payment_status}
+              onChange={handleChange}
+              options={[
+                { value: 'Belum Bayar', label: 'Belum Bayar' },
+                { value: 'DP', label: 'Down Payment (DP)' },
+                { value: 'Lunas', label: 'Lunas' },
+              ]}
+              required
+            />
+          </div>
+
+          {/* Total Summary */}
+          <div className="p-4 bg-white border-2 border-blue-200 rounded-lg">
+            <h4 className="font-semibold text-gray-900 mb-3">Rincian Biaya</h4>
+            
+            {/* Booking Schedule Info */}
+            {formData.booking_date && formData.booking_time && (
+              <div className="mb-3 pb-3 border-b border-blue-200 bg-blue-50 p-3 rounded-lg">
+                <p className="text-sm font-semibold text-blue-900 mb-2">Jadwal Booking:</p>
+                {formData.booking_date_end && formData.booking_days > 1 ? (
+                  // Multi-day booking: Show start and end dates/times separately
+                  <div className="space-y-1">
+                    <p className="text-xs text-blue-700">
+                      <span className="font-medium">Mulai:</span>{' '}
+                      {new Date(formData.booking_date).toLocaleDateString('id-ID', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric'
+                      })}{' '}
+                      - {formData.booking_time}
+                    </p>
+                    <p className="text-xs text-blue-700">
+                      <span className="font-medium">Selesai:</span>{' '}
+                      {new Date(formData.booking_date_end).toLocaleDateString('id-ID', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric'
+                      })}{' '}
+                      - {formData.booking_time_end}
+                    </p>
+                    <p className="text-xs text-blue-600 font-semibold mt-2">
+                      Total: {formData.booking_days} hari
+                    </p>
+                  </div>
+                ) : (
+                  // Single-day booking: Show date with time range
+                  <div className="space-y-1">
+                    <p className="text-xs text-blue-700">
+                      <span className="font-medium">Tanggal:</span>{' '}
+                      {new Date(formData.booking_date).toLocaleDateString('id-ID', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric'
+                      })}
+                    </p>
+                    <p className="text-xs text-blue-700">
+                      <span className="font-medium">Waktu:</span> {formData.booking_time} - {formData.booking_time_end}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Services Breakdown */}
+            <div className="space-y-1.5 mb-3 pb-3 border-b border-gray-200">
+              {formData.selected_services.map((service, index) => {
+                const srv = services.find(s => s.id === parseInt(service.service_id));
+                if (!srv) return null;
+                const price = parseFloat(service.custom_price || srv.default_price || 0);
+                return (
+                  <div key={index} className="flex justify-between text-sm">
+                    <span className="text-gray-700">{srv.name}:</span>
+                    <span className="text-gray-900 font-medium">Rp {price.toLocaleString('id-ID')}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Subtotal */}
+            <div className="flex justify-between text-sm mb-1.5">
+              <span className="text-gray-700">Total Layanan (1 hari):</span>
+              <span className="text-gray-900 font-medium">
+                Rp {formData.selected_services.reduce((sum, s) => {
+                  const srv = services.find(srv => srv.id === parseInt(s.service_id));
+                  return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                }, 0).toLocaleString('id-ID')}
+              </span>
+            </div>
+
+            {/* Multiply by days */}
+            {formData.booking_days > 1 && (
+              <div className="flex justify-between text-sm mb-1.5 text-blue-600">
+                <span>× {formData.booking_days} hari:</span>
+                <span className="font-medium">
+                  Rp {(formData.selected_services.reduce((sum, s) => {
+                    const srv = services.find(srv => srv.id === parseInt(s.service_id));
+                    return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                  }, 0) * formData.booking_days).toLocaleString('id-ID')}
+                </span>
+              </div>
+            )}
+
+            {/* Discount */}
+            {formData.discount > 0 && (
+              <div className="flex justify-between text-sm mb-1.5 text-green-600">
+                <span>Diskon:</span>
+                <span className="font-medium">- Rp {formData.discount.toLocaleString('id-ID')}</span>
+              </div>
+            )}
+
+            {/* Subtotal after discount */}
+            <div className="flex justify-between text-sm mb-1.5">
+              <span className="text-gray-700">Subtotal:</span>
+              <span className="text-gray-900 font-medium">
+                Rp {((formData.selected_services.reduce((sum, s) => {
+                  const srv = services.find(srv => srv.id === parseInt(s.service_id));
+                  return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                }, 0) * formData.booking_days) - formData.discount).toLocaleString('id-ID')}
+              </span>
+            </div>
+
+            {/* Tax */}
+            {formData.tax_percentage > 0 && (
+              <div className="flex justify-between text-sm mb-1.5">
+                <span className="text-gray-700">PPN ({formData.tax_percentage}%):</span>
+                <span className="text-gray-900 font-medium">
+                  Rp {(((formData.selected_services.reduce((sum, s) => {
+                    const srv = services.find(srv => srv.id === parseInt(s.service_id));
+                    return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                  }, 0) - formData.discount) * formData.tax_percentage) / 100).toLocaleString('id-ID')}
+                </span>
+              </div>
+            )}
+
+            {/* Additional Fees */}
+            {formData.additional_fees.length > 0 && formData.additional_fees.some(f => f.amount > 0) && (
+              <div className="space-y-1.5 mb-3 pb-3 border-b border-gray-200">
+                {formData.additional_fees.map((fee, index) => {
+                  if (!fee.amount || fee.amount === 0) return null;
+                  return (
+                    <div key={index} className="flex justify-between text-sm">
+                      <span className="text-gray-700">{fee.description || 'Biaya Tambahan'}:</span>
+                      <span className="text-gray-900 font-medium">Rp {parseFloat(fee.amount).toLocaleString('id-ID')}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Grand Total */}
+            <div className="flex justify-between items-center pt-3 border-t-2 border-blue-200 mb-3">
+              <span className="text-base font-semibold text-gray-900">Total Keseluruhan:</span>
+              <span className="text-xl font-bold text-blue-600">
+                Rp {formData.total_amount.toLocaleString('id-ID')}
+              </span>
+            </div>
+
+            {/* Payment Status */}
+            <div className="flex justify-between text-sm mb-1.5">
+              <span className="text-gray-700">Sudah Dibayar:</span>
+              <span className="text-gray-900 font-medium">Rp {formData.amount_paid.toLocaleString('id-ID')}</span>
+            </div>
+
+            {/* Remaining Amount */}
+            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+              <span className="text-sm font-medium text-gray-700">Sisa Pembayaran:</span>
+              <span className={`text-base font-bold ${
+                Math.max(0, formData.total_amount - formData.amount_paid) > 0 ? 'text-red-600' : 'text-green-600'
+              }`}>
+                Rp {Math.max(0, formData.total_amount - formData.amount_paid).toLocaleString('id-ID')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <TextArea
+            label="Catatan"
+            name="notes"
+            value={formData.notes}
+            onChange={handleChange}
+            placeholder="Tambahkan catatan tambahan (opsional)"
+            rows={3}
+          />
+        </div>
+      </form>
+      </Modal>
+
+      {/* Add Service Modal */}
+      {showAddServiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Tambah Layanan Baru</h3>
+              <button
+                onClick={() => {
+                  setShowAddServiceModal(false);
+                  setNewServiceData({ name: '', description: '', default_price: 0 });
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <FiX className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nama Layanan
+                </label>
+                <input
+                  type="text"
+                  value={newServiceData.name}
+                  onChange={(e) => setNewServiceData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Masukkan nama layanan..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Deskripsi (opsional)
+                </label>
+                <textarea
+                  value={newServiceData.description}
+                  onChange={(e) => setNewServiceData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Masukkan deskripsi layanan..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Harga Default (opsional)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
+                  <input
+                    type="number"
+                    value={newServiceData.default_price === 0 ? '' : newServiceData.default_price}
+                    onChange={(e) => setNewServiceData(prev => ({ ...prev, default_price: parseFloat(e.target.value) || 0 }))}
+                    placeholder="0"
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowAddServiceModal(false);
+                  setNewServiceData({ name: '', description: '', default_price: 0 });
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={async () => {
+                  if (!newServiceData.name.trim()) {
+                    alert('Nama layanan wajib diisi!');
+                    return;
+                  }
+
+                  try {
+                    const response = await api.post('/user/services', {
+                      user_id: 2,
+                      name: newServiceData.name,
+                      description: newServiceData.description,
+                      default_price: newServiceData.default_price,
+                    });
+
+                    if (response.data.success) {
+                      alert('Layanan berhasil ditambahkan!');
+                      fetchServices();
+                      setShowAddServiceModal(false);
+                      setNewServiceData({ name: '', description: '', default_price: 0 });
+                    } else {
+                      throw new Error(response.data.message);
+                    }
+                  } catch (error) {
+                    console.error('Error adding service:', error);
+                    alert('Gagal menambahkan layanan. Silakan coba lagi.');
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Tambah Layanan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Service Modal */}
+      {showEditServiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Layanan</h3>
+              <button
+                onClick={() => {
+                  setShowEditServiceModal(false);
+                  setEditServiceData({ id: null, name: '', description: '', default_price: 0 });
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <FiX className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nama Layanan
+                </label>
+                <input
+                  type="text"
+                  value={editServiceData.name}
+                  onChange={(e) => setEditServiceData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Masukkan nama layanan..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Deskripsi (opsional)
+                </label>
+                <textarea
+                  value={editServiceData.description}
+                  onChange={(e) => setEditServiceData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Masukkan deskripsi layanan..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Harga Default (opsional)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
+                  <input
+                    type="number"
+                    value={editServiceData.default_price === 0 ? '' : editServiceData.default_price}
+                    onChange={(e) => setEditServiceData(prev => ({ ...prev, default_price: parseFloat(e.target.value) || 0 }))}
+                    placeholder="0"
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowEditServiceModal(false);
+                  setEditServiceData({ id: null, name: '', description: '', default_price: 0 });
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={async () => {
+                  if (!editServiceData.name.trim()) {
+                    alert('Nama layanan wajib diisi!');
+                    return;
+                  }
+
+                  try {
+                    const response = await api.put(`/user/services/${editServiceData.id}`, {
+                      name: editServiceData.name,
+                      description: editServiceData.description,
+                      default_price: editServiceData.default_price,
+                    });
+
+                    if (response.data.success) {
+                      alert('Layanan berhasil diupdate!');
+                      fetchServices();
+                      setShowEditServiceModal(false);
+                      setEditServiceData({ id: null, name: '', description: '', default_price: 0 });
+                    } else {
+                      throw new Error(response.data.message);
+                    }
+                  } catch (error) {
+                    console.error('Error updating service:', error);
+                    alert('Gagal mengupdate layanan. Silakan coba lagi.');
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Simpan Perubahan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default EditBookingModal;
