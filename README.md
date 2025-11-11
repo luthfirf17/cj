@@ -345,17 +345,50 @@ Contributions are welcome! Berikut cara berkontribusi:
 
 ---
 
+## 🤝 Contributing
+
+Contributions are welcome! Berikut cara berkontribusi:
+
+1. 🍴 Fork repository ini
+2. 🌿 Buat branch fitur (`git checkout -b feature/AmazingFeature`)
+3. ✍️ Commit perubahan (`git commit -m 'Add some AmazingFeature'`)
+4. 📤 Push ke branch (`git push origin feature/AmazingFeature`)
+5. 🔃 Buat Pull Request
+
+### 📋 Contribution Guidelines
+
+- Gunakan conventional commits
+- Tambahkan tests untuk fitur baru
+- Update dokumentasi jika diperlukan
+- Follow existing code style
+
+---
+
 ## 📝 License
 
-Project ini adalah **private/proprietary**. Tidak untuk penggunaan komersial tanpa izin.
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+Copyright © 2025 **Cep Luthfi Rizky Fauzi**
 
 ---
 
 ## 👨‍💻 Author
 
-**Luthfi RF**
-- GitHub: [@luthfirf17](https://github.com/luthfirf17)
-- Repository: [cj](https://github.com/luthfirf17/cj)
+<table>
+<tr>
+<td align="center">
+<img src="https://github.com/luthfirf17.png" width="100px;" alt="Cep Luthfi Rizky Fauzi"/><br />
+<sub><b>Cep Luthfi Rizky Fauzi</b></sub><br />
+<sub>Creator & Developer</sub>
+</td>
+</tr>
+</table>
+
+**Contact Information:**
+- 📧 Email: [catatjasamu@gmail.com](mailto:catatjasamu@gmail.com)
+- 🐙 GitHub: [@luthfirf17](https://github.com/luthfirf17)
+- 📍 Location: Tasikmalaya, Jawa Barat, Indonesia
+- 🏢 Repository: [github.com/luthfirf17/cj](https://github.com/luthfirf17/cj)
 
 ---
 

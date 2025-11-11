@@ -16,8 +16,21 @@
     "management",
     "api"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": {
+    "name": "Cep Luthfi Rizky Fauzi",
+    "email": "catatjasamu@gmail.com",
+    "url": "https://github.com/luthfirf17"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luthfirf17/cj.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luthfirf17/cj/issues",
+    "email": "catatjasamu@gmail.com"
+  },
+  "homepage": "https://github.com/luthfirf17/cj#readme",
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
