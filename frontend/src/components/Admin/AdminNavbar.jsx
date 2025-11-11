@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiMenu, FiBell, FiUser } from 'react-icons/fi';
+import Logo from '../Common/Logo';
 
 const AdminNavbar = ({ onMenuClick }) => {
   const navigate = useNavigate();
@@ -17,7 +18,7 @@ const AdminNavbar = ({ onMenuClick }) => {
   return (
     <header className="h-16 bg-white border-b border-gray-200 sticky top-0 z-10">
       <div className="flex items-center justify-between h-full px-4 lg:px-6">
-        {/* Left: Menu Button & Title */}
+        {/* Left: Menu Button, Logo & Title */}
         <div className="flex items-center gap-4">
           <button
             onClick={onMenuClick}
@@ -25,7 +26,15 @@ const AdminNavbar = ({ onMenuClick }) => {
           >
             <FiMenu size={24} />
           </button>
-          <h2 className="text-lg font-semibold text-gray-800 hidden sm:block">
+          
+          {/* Logo */}
+          <Link to="/admin/dashboard" className="flex items-center">
+            <Logo size="md" showText={true} variant="dark" />
+          </Link>
+          
+          <div className="h-8 w-px bg-gray-300 hidden lg:block"></div>
+          
+          <h2 className="text-lg font-semibold text-gray-800 hidden lg:block">
             Admin Dashboard
           </h2>
         </div>
