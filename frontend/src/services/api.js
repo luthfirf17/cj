@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = 'http://72.61.142.236:5001/api';
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_data';
 

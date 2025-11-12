@@ -65,6 +65,8 @@ services:
       - backend
     networks:
       - catatjasamu-network
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html
 
 networks:
   catatjasamu-network:
