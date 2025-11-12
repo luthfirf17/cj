@@ -40,7 +40,7 @@ services:
       DB_PASSWORD: 1234
       JWT_SECRET: catat-jasamu-secret-key-2025
       JWT_EXPIRE: 7d
-      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URL: http://72.61.142.236:3000
     ports:
       - "5001:5001"
     depends_on:
