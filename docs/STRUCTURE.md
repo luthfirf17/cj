@@ -1,8 +1,8 @@
 # 📁 Project Structure - Catat Jasamu
 
-Dokumentasi lengkap struktur folder dan file project.
+Dokumentasi lengkap struktur folder dan file project yang telah dirapikan.
 
-## 🌳 Directory Tree
+## 🌳 Directory Tree (Updated November 2025)
 
 ```
 CatatJasamu/
@@ -12,42 +12,67 @@ CatatJasamu/
 │   │   ├── 📂 controllers/     # Business logic controllers
 │   │   ├── 📂 middlewares/     # Express middlewares
 │   │   ├── 📂 migrations/      # Database migrations
-│   │   ├── 📂 models/          # Data models
 │   │   ├── 📂 routes/          # API routes
-│   │   ├── 📂 seeders/         # Database seeders
-│   │   ├── 📂 utils/           # Utility functions
 │   │   └── server.js           # Main server file
 │   ├── Dockerfile              # Docker config for backend
-│   ├── .dockerignore
-│   ├── .env                    # Environment variables (gitignored)
-│   ├── .env.example            # Environment template
-│   └── package.json            # Node dependencies
+│   ├── package.json            # Node dependencies
+│   └── test_*.js               # Legacy test files (moved to /tests)
 │
 ├── 📂 frontend/                # Frontend App (React + Vite)
 │   ├── 📂 src/
-│   │   ├── 📂 assets/          # Images, fonts, static files
 │   │   ├── 📂 components/      # React components
-│   │   │   ├── Admin/          # Admin components
-│   │   │   ├── Common/         # Shared components
-│   │   │   └── User/           # User components
-│   │   ├── 📂 context/         # React context (state management)
-│   │   ├── 📂 hooks/           # Custom React hooks
 │   │   ├── 📂 pages/           # Page components
-│   │   │   ├── Admin/          # Admin pages
-│   │   │   └── User/           # User pages
 │   │   ├── 📂 services/        # API services
-│   │   ├── 📂 styles/          # CSS styles
 │   │   ├── 📂 utils/           # Utility functions
-│   │   ├── App.jsx             # Main App component
-│   │   └── main.jsx            # Entry point
+│   │   └── App.jsx             # Main App component
 │   ├── 📂 public/              # Public static files
+│   ├── 📂 dist/                # Build output (generated)
 │   ├── Dockerfile              # Docker config (production)
 │   ├── Dockerfile.dev          # Docker config (development)
-│   ├── nginx.conf              # Nginx configuration
-│   ├── .dockerignore
-│   ├── index.html              # HTML template
 │   ├── package.json            # Node dependencies
-│   ├── tailwind.config.js      # Tailwind CSS config
+│   ├── vite.config.js          # Vite configuration
+│   └── tailwind.config.js      # Tailwind CSS config
+│
+├── 📂 docker/                  # Docker Configuration
+│   ├── docker-compose.yml      # Production compose
+│   ├── docker-compose.dev.yml  # Development compose
+│   ├── .env.docker             # Docker environment
+│   └── README.md               # Docker setup guide
+│
+├── 📂 docs/                    # 📚 Complete Documentation
+│   ├── INDEX.md                # Documentation index
+│   ├── DEPLOYMENT_GUIDE.md     # Deployment guide
+│   ├── AUTHOR.md               # Author information
+│   ├── LICENSE                 # License file
+│   ├── README.md               # Documentation overview
+│   ├── 📂 api/                 # API documentation
+│   ├── 📂 architecture/        # System architecture
+│   ├── 📂 development/         # Development guides
+│   ├── 📂 features/            # Feature documentation
+│   ├── 📂 security/            # Security guides
+│   ├── 📂 setup/               # Setup guides
+│   └── 📂 user-guide/          # User guides
+│
+├── 📂 scripts/                 # Automation Scripts
+│   ├── Makefile                # Build automation
+│   ├── README.md               # Scripts documentation
+│   ├── 📂 backup/              # Database backup scripts
+│   ├── 📂 docker/              # Docker utility scripts
+│   └── 📂 restore/             # Data restore scripts
+│
+├── 📂 tests/                   # Test Files
+│   ├── README.md               # Testing documentation
+│   ├── test_password.js        # Password security tests
+│   ├── test_token.js           # JWT token tests
+│   └── test_update.js          # Data update tests
+│
+├── 📂 database_backups/        # Database Backup Files
+│   └── *.json                  # Backup snapshots
+│
+├── 📄 README.md                # Project overview (root)
+├── 📄 .gitignore               # Git ignore rules
+└── 📄 .DS_Store                # macOS system file
+```
 │   └── vite.config.js          # Vite config
 │
 ├── 📂 docs/                    # 📚 Documentation
