@@ -60,7 +60,7 @@ services:
     container_name: catatjasamu-frontend
     restart: unless-stopped
     environment:
-      VITE_API_URL: http://72.61.142.236:5001
+      VITE_API_URL: https://catatjasamu.com
     ports:
       - "3000:80"
     depends_on:
