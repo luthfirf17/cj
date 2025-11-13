@@ -99,13 +99,23 @@ Dokumentasi API endpoints dan integration.
 
 ---
 
-### 👤 User Guide - Panduan User
+### � About - Tentang Project
 
-Panduan untuk end-user menggunakan aplikasi.
+Informasi tentang project dan tim pengembang.
 
-| Folder | Deskripsi |
-|--------|-----------|
-| [user-guide/](user-guide/) | Panduan lengkap untuk user (coming soon) |
+| File | Deskripsi |
+|------|-----------|
+| [AUTHOR.md](about/AUTHOR.md) | Informasi lengkap tentang author/developer project |
+
+---
+
+### 🚀 Deployment - Panduan Deployment
+
+Panduan lengkap untuk deploy aplikasi ke berbagai environment.
+
+| File | Deskripsi |
+|------|-----------|
+| [DEPLOYMENT_GUIDE.md](deployment/DEPLOYMENT_GUIDE.md) | Panduan deployment lengkap dari development hingga production |
 
 ---
 
@@ -115,10 +125,10 @@ Log perubahan dan summary implementasi.
 
 | File | Deskripsi |
 |------|-----------|
-| [CHANGELOG.md](CHANGELOG.md) | Log perubahan aplikasi per versi |
-| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | Summary implementasi fitur-fitur |
-| [REORGANIZATION_SUMMARY.md](REORGANIZATION_SUMMARY.md) | Summary reorganisasi dokumentasi |
-| [STRUCTURE.md](STRUCTURE.md) | Struktur project overview |
+| [CHANGELOG.md](changelog/CHANGELOG.md) | Log perubahan aplikasi per versi |
+| [IMPLEMENTATION_SUMMARY.md](development/IMPLEMENTATION_SUMMARY.md) | Summary implementasi fitur-fitur |
+| [REORGANIZATION_SUMMARY.md](development/REORGANIZATION_SUMMARY.md) | Summary reorganisasi dokumentasi |
+| [STRUCTURE.md](architecture/STRUCTURE.md) | Struktur project overview |
 
 ---
 
@@ -157,6 +167,7 @@ Dokumentasi per fitur:
 - **Financial Management** → [FINANCIAL_PAGE_README.md](features/FINANCIAL_PAGE_README.md)
 - **Sidebar Navigation** → [SIDEBAR_FEATURE.md](features/SIDEBAR_FEATURE.md)
 - **PIN Security** → [PIN_SECURITY_TECHNICAL_ARCHITECTURE.md](security/PIN_SECURITY_TECHNICAL_ARCHITECTURE.md)
+- **Deployment Guide** → [DEPLOYMENT_GUIDE.md](deployment/DEPLOYMENT_GUIDE.md)
 
 ---
 
@@ -194,6 +205,8 @@ Gunakan **Ctrl+F** atau **Cmd+F** untuk mencari topik spesifik:
 | `database`, `migration`, `schema` | [DATABASE_SETUP.md](setup/DATABASE_SETUP.md), [DATABASE_SCHEMA.md](architecture/DATABASE_SCHEMA.md) |
 | `backup`, `export`, `import` | [BACKUP_RESTORE_DOCUMENTATION.md](features/BACKUP_RESTORE_DOCUMENTATION.md) |
 | `API`, `endpoint`, `route` | [API_OVERVIEW.md](api/API_OVERVIEW.md), [QUICK_REFERENCE.md](development/QUICK_REFERENCE.md) |
+| `deployment`, `docker`, `production` | [DEPLOYMENT_GUIDE.md](deployment/DEPLOYMENT_GUIDE.md), [DOCKER_SETUP.md](setup/DOCKER_SETUP.md) |
+| `author`, `developer`, `team` | [AUTHOR.md](about/AUTHOR.md) |
 | `error`, `bug`, `fix` | [BACKEND_FIX_MANUAL.md](development/BACKEND_FIX_MANUAL.md), [MULTI_TENANCY_FIX_GUIDE.md](development/MULTI_TENANCY_FIX_GUIDE.md) |
 
 ---
@@ -202,7 +215,8 @@ Gunakan **Ctrl+F** atau **Cmd+F** untuk mencari topik spesifik:
 
 - **Issues?** → Check [BACKEND_FIX_MANUAL.md](development/BACKEND_FIX_MANUAL.md)
 - **Progress?** → Check [PROGRESS_SUMMARY.md](development/PROGRESS_SUMMARY.md)
-- **New Feature?** → Update [CHANGELOG.md](CHANGELOG.md)
+- **New Feature?** → Update [CHANGELOG.md](changelog/CHANGELOG.md)
+- **Deployment?** → Check [DEPLOYMENT_GUIDE.md](deployment/DEPLOYMENT_GUIDE.md)
 - **Documentation?** → Follow struktur folder di atas
 
 ---
@@ -220,7 +234,7 @@ Gunakan **Ctrl+F** atau **Cmd+F** untuk mencari topik spesifik:
 
 ### Menulis Dokumentasi Baru
 
-1. Tentukan kategori (Architecture, Setup, Security, Features, Development)
+1. Tentukan kategori (About, Architecture, Setup, Security, Features, Development, API, Deployment, Changelog)
 2. Simpan di folder yang sesuai
 3. Update INDEX.md (file ini)
 4. Gunakan template Markdown yang konsisten
