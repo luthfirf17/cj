@@ -33,11 +33,11 @@ SELECT NULL, 'Lainnya', '#6B7280', '📝', true
 WHERE NOT EXISTS (SELECT 1 FROM expense_categories WHERE name = 'Lainnya' AND user_id IS NULL);
 
 -- =====================================================
--- SEED DATA - Sample Admin User (Opsional)
+-- SEED DATA - Sample Admin User
 -- =====================================================
 
--- Uncomment baris di bawah ini jika ingin membuat user admin default
+-- Create default admin user
 -- Password: admin123 (hashed dengan bcrypt)
--- INSERT INTO users (username, email, password, full_name, role) VALUES
--- ('admin', 'admin@catatjasamu.com', '$2a$10$8K1p/5w6QyT1Vz2v9zXcOeJcQw9dJcQw9dJcQw9dJcQw9dJcQw9d', 'Administrator', 'admin')
--- ON CONFLICT (email) DO NOTHING;
+INSERT INTO users (username, email, password, full_name, role) VALUES
+('admin', 'admin@catatjasamu.com', '$2a$10$mvTAWvt6DX0W.O7vY.73k.KukBs6TNJD4wlmjZsKoPSvCtFRMroT6', 'Administrator', 'admin')
+ON CONFLICT (email) DO NOTHING;

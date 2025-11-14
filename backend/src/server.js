@@ -589,6 +589,165 @@ app.delete('/api/user/clients/:id', authenticate, enforceTenancy, async (req, re
   }
 });
 
+// Responsible Parties endpoints
+app.get('/api/user/responsible-parties', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const partiesQuery = `
+      SELECT id, name, phone, address
+      FROM responsible_parties
+      WHERE user_id = $1
+      ORDER BY name
+    `;
+    
+    const parties = await query(partiesQuery, [userId]);
+    
+    res.json({
+      success: true,
+      data: parties.rows
+    });
+  } catch (error) {
+    console.error('Error fetching responsible parties:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch responsible parties'
+    });
+  }
+});
+
+// Service Responsible Parties endpoints
+app.get('/api/user/service-responsible-parties', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const queryText = `
+      SELECT id, name, phone, address, service_id
+      FROM service_responsible_parties
+      WHERE user_id = $1
+      ORDER BY name
+    `;
+    const result = await query(queryText, [userId]);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error fetching service responsible parties:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch service responsible parties' });
+  }
+});
+
+// POST: Create new responsible party
+app.post('/api/user/responsible-parties', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const user_id = req.user.id;
+    const { name, phone, address } = req.body;
+
+    // Validation
+    if (!name || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name and phone are required'
+      });
+    }
+
+    const insertQuery = `
+      INSERT INTO responsible_parties (user_id, name, phone, address, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      RETURNING id, name, phone, address
+    `;
+
+    const result = await query(insertQuery, [user_id, name, phone, address || null]);
+
+    res.status(201).json({
+      success: true,
+      data: result.rows[0],
+      message: 'Responsible party created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating responsible party:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create responsible party'
+    });
+  }
+});
+
+// PUT: Update responsible party
+app.put('/api/user/responsible-parties/:id', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const partyId = req.params.id;
+    const userId = req.user.id;
+    const { name, phone, address } = req.body;
+
+    // Validation
+    if (!name || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name and phone are required'
+      });
+    }
+
+    const updateQuery = `
+      UPDATE responsible_parties
+      SET name = $1, phone = $2, address = $3, updated_at = NOW()
+      WHERE id = $4 AND user_id = $5
+      RETURNING id, name, phone, address
+    `;
+
+    const result = await query(updateQuery, [name, phone, address || null, partyId, userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Responsible party not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+      message: 'Responsible party updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating responsible party:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update responsible party'
+    });
+  }
+});
+
+// DELETE: Delete responsible party
+app.delete('/api/user/responsible-parties/:id', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const partyId = req.params.id;
+    const userId = req.user.id;
+
+    const deleteQuery = `
+      DELETE FROM responsible_parties
+      WHERE id = $1 AND user_id = $2
+    `;
+
+    const result = await query(deleteQuery, [partyId, userId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Responsible party not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Responsible party deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting responsible party:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete responsible party'
+    });
+  }
+});
+
 // PUT: Update booking
 app.put('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res) => {
   const client = await require('./config/database').getClient();
@@ -2176,11 +2335,16 @@ app.get('/api/expense-categories', authenticate, enforceTenancy, async (req, res
   }
 });
 
-// Export to Excel/CSV
+// Export to Excel
 app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { format } = req.params; // 'xlsx' or 'csv'
+    const { format } = req.params; // 'xlsx' only
+
+    // Validate format
+    if (format !== 'xlsx') {
+      return res.status(400).json({ message: 'Invalid format. Only xlsx is supported.' });
+    }
 
     // Import required libraries
     const ExcelJS = require('exceljs');
@@ -2190,6 +2354,8 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
       companySettings: req.query.companySettings !== 'false',
       clients: req.query.clients !== 'false',
       services: req.query.services !== 'false',
+      responsibleParties: req.query.responsibleParties !== 'false',
+      serviceResponsibleParties: req.query.serviceResponsibleParties !== 'false',
       bookings: req.query.bookings !== 'false',
       payments: req.query.payments !== 'false',
       expenses: req.query.expenses !== 'false',
@@ -2200,6 +2366,8 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
     const selectedIds = {
       clients: req.query.clientsIds ? JSON.parse(req.query.clientsIds) : null,
       services: req.query.servicesIds ? JSON.parse(req.query.servicesIds) : null,
+      responsibleParties: req.query.responsiblePartiesIds ? JSON.parse(req.query.responsiblePartiesIds) : null,
+      serviceResponsibleParties: req.query.serviceResponsiblePartiesIds ? JSON.parse(req.query.serviceResponsiblePartiesIds) : null,
       bookings: req.query.bookingsIds ? JSON.parse(req.query.bookingsIds) : null,
       payments: req.query.paymentsIds ? JSON.parse(req.query.paymentsIds) : null,
       expenses: req.query.expensesIds ? JSON.parse(req.query.expensesIds) : null,
@@ -2259,9 +2427,12 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
       };
       headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       
+      // Define numeric columns that should be center-aligned
+      const numericColumns = ['id', 'service_quantity', 'booking_days', 'tax_percentage', 'total_price', 'amount_paid', 'remaining_amount', 'discount'];
+      
       // Apply borders to all cells
       worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-        row.eachCell({ includeEmpty: true }, (cell) => {
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           cell.border = {
             top: { style: 'thin', color: { argb: 'FF000000' } },
             left: { style: 'thin', color: { argb: 'FF000000' } },
@@ -2271,7 +2442,13 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
           
           // Data rows alignment
           if (rowNumber > 1) {
-            cell.alignment = { vertical: 'top', wrapText: true };
+            // Check if this column contains numeric data
+            const columnKey = worksheet.columns[colNumber - 1]?.key;
+            if (numericColumns.includes(columnKey)) {
+              cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            } else {
+              cell.alignment = { vertical: 'top', wrapText: true };
+            }
           }
         });
       });
@@ -2284,15 +2461,26 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
 
     // Fetch and add Bookings sheet if selected
     if (selection.bookings) {
+      console.log('📊 Starting bookings export...');
       let bookingsQuery = `SELECT 
         b.id, b.booking_date, b.booking_time,
-        c.name as client_name, c.phone as client_phone, c.email as client_email, c.address as client_address,
-        s.name as service_name, s.description as service_desc, s.price as service_price, s.duration as service_duration,
+        c.name as client_name, c.phone as client_phone, c.address as client_address,
+        b.location_name,
         b.total_price, b.status, b.notes,
-        b.created_at, b.updated_at
+        COALESCE(p.amount_paid, 0) as amount_paid,
+        CASE 
+          WHEN COALESCE(p.amount_paid, 0) = 0 THEN 'Belum Bayar'
+          WHEN COALESCE(p.amount_paid, 0) >= b.total_price THEN 'Lunas'
+          ELSE 'Bayar Sebagian'
+        END as payment_status,
+        (b.total_price - COALESCE(p.amount_paid, 0)) as remaining_amount
        FROM bookings b 
        LEFT JOIN clients c ON b.client_id = c.id 
-       LEFT JOIN services s ON b.service_id = s.id 
+       LEFT JOIN (
+         SELECT booking_id, SUM(amount) as amount_paid
+         FROM payments
+         GROUP BY booking_id
+       ) p ON b.id = p.booking_id
        WHERE b.user_id = $1`;
       const params = [userId];
       
@@ -2310,115 +2498,126 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
         // Define columns
         worksheet.columns = [
           { header: 'ID Booking', key: 'id', width: 12 },
-          { header: 'Tanggal Booking', key: 'booking_date', width: 20 },
-          { header: 'Waktu Booking', key: 'booking_time', width: 15 },
+          { header: 'Tanggal Mulai', key: 'booking_date', width: 20 },
+          { header: 'Tanggal Selesai', key: 'booking_date_end', width: 20 },
+          { header: 'Waktu Mulai', key: 'booking_time', width: 15 },
+          { header: 'Waktu Selesai', key: 'booking_time_end', width: 15 },
           { header: 'Nama Klien', key: 'client_name', width: 28 },
           { header: 'Telepon Klien', key: 'client_phone', width: 18 },
-          { header: 'Email Klien', key: 'client_email', width: 28 },
           { header: 'Alamat Klien', key: 'client_address', width: 40 },
-          { header: 'Nama Layanan', key: 'service_name', width: 28 },
-          { header: 'Deskripsi Layanan', key: 'service_desc', width: 40 },
-          { header: 'Harga Layanan', key: 'service_price', width: 18 },
-          { header: 'Durasi Layanan (menit)', key: 'service_duration', width: 20 },
+          { header: 'Nama Lokasi', key: 'location_name', width: 30 },
+          { header: 'Penanggung Jawab', key: 'responsible_parties', width: 35 },
+          { header: 'Layanan Dipesan', key: 'services_ordered', width: 50 },
+          { header: 'Jumlah Layanan', key: 'service_quantity', width: 15 },
+          { header: 'Durasi (Hari)', key: 'booking_days', width: 15 },
+          { header: 'Biaya Tambahan', key: 'additional_fees', width: 30 },
+          { header: 'Diskon', key: 'discount', width: 15 },
+          { header: 'Pajak (%)', key: 'tax_percentage', width: 12 },
           { header: 'Total Harga', key: 'total_price', width: 18 },
           { header: 'Status Booking', key: 'status', width: 15 },
-          { header: 'Catatan Booking', key: 'notes', width: 45 },
-          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
-          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+          { header: 'Status Pembayaran', key: 'payment_status', width: 18 },
+          { header: 'Jumlah Dibayar', key: 'amount_paid', width: 18 },
+          { header: 'Sisa Pembayaran', key: 'remaining_amount', width: 18 },
+          { header: 'Catatan Booking', key: 'notes', width: 45 }
         ];
         
         // Add rows
         bookings.rows.forEach(row => {
+          // Parse booking details from notes JSON
+          let bookingDetails = {
+            booking_date_end: '',
+            booking_time_end: '',
+            booking_days: 1,
+            responsible_parties: '',
+            services_ordered: '',
+            service_quantity: 1,
+            additional_fees: '',
+            discount: 0,
+            tax_percentage: 0,
+            user_notes: ''
+          };
+
+          try {
+            if (row.notes && typeof row.notes === 'string' && row.notes.trim().startsWith('{')) {
+              const notesObj = JSON.parse(row.notes);
+
+              // Extract booking dates and times
+              bookingDetails.booking_date_end = notesObj.booking_date_end || '';
+              bookingDetails.booking_time_end = notesObj.booking_time_end || '';
+
+              // Calculate booking days
+              if (notesObj.booking_days) {
+                bookingDetails.booking_days = notesObj.booking_days;
+              } else if (notesObj.booking_date && notesObj.booking_date_end) {
+                const startDate = new Date(notesObj.booking_date);
+                const endDate = new Date(notesObj.booking_date_end);
+                const diffTime = Math.abs(endDate - startDate);
+                bookingDetails.booking_days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+              }
+
+              // Extract responsible parties
+              if (notesObj.responsible_parties && Array.isArray(notesObj.responsible_parties)) {
+                bookingDetails.responsible_parties = notesObj.responsible_parties
+                  .map(rp => rp.name)
+                  .join(', ');
+              }
+
+              // Extract services ordered with prices
+              if (notesObj.services && Array.isArray(notesObj.services)) {
+                bookingDetails.service_quantity = notesObj.services.reduce((sum, service) => sum + (parseInt(service.quantity) || 1), 0);
+                bookingDetails.services_ordered = notesObj.services
+                  .map(service => `${service.service_name || 'Unknown'} (${service.quantity || 1}x) - ${(service.custom_price || 0)}`)
+                  .join('\n');
+              }
+
+              // Extract additional fees
+              if (notesObj.additional_fees && Array.isArray(notesObj.additional_fees)) {
+                bookingDetails.additional_fees = notesObj.additional_fees
+                  .map(fee => `${fee.description}: ${(fee.amount || 0)}`)
+                  .join('\n');
+              }
+
+              // Extract discount and tax
+              bookingDetails.discount = notesObj.discount || 0;
+              bookingDetails.tax_percentage = notesObj.tax_percentage || 0;
+
+              // Extract user notes
+              bookingDetails.user_notes = notesObj.user_notes || '';
+            }
+          } catch (e) {
+            // Ignore parsing errors, use defaults
+            console.log('Error parsing booking notes:', e.message);
+          }
+
           worksheet.addRow({
             id: row.id,
             booking_date: formatDate(row.booking_date),
+            booking_date_end: bookingDetails.booking_date_end ? formatDate(bookingDetails.booking_date_end) : '',
             booking_time: row.booking_time || '',
+            booking_time_end: bookingDetails.booking_time_end || '',
             client_name: row.client_name || '',
             client_phone: row.client_phone || '',
-            client_email: row.client_email || '',
             client_address: row.client_address || '',
-            service_name: row.service_name || '',
-            service_desc: row.service_desc || '',
-            service_price: row.service_price ? formatCurrency(row.service_price) : '',
-            service_duration: row.service_duration || '',
-            total_price: row.total_price ? formatCurrency(row.total_price) : 'Rp 0',
+            location_name: row.location_name || '',
+            responsible_parties: bookingDetails.responsible_parties,
+            services_ordered: bookingDetails.services_ordered,
+            service_quantity: bookingDetails.service_quantity,
+            booking_days: bookingDetails.booking_days,
+            additional_fees: bookingDetails.additional_fees,
+            discount: bookingDetails.discount || 0,
+            tax_percentage: bookingDetails.tax_percentage || 0,
+            total_price: row.total_price || 0,
             status: row.status || '',
-            notes: parseNotes(row.notes),
-            created_at: formatDate(row.created_at),
-            updated_at: formatDate(row.updated_at)
+            payment_status: row.payment_status || 'Belum Bayar',
+            amount_paid: row.amount_paid || 0,
+            remaining_amount: row.remaining_amount || 0,
+            notes: bookingDetails.user_notes
           });
         });
         
         // Apply styling
         styleWorksheet(worksheet);
         console.log(`  ✅ Exported ${bookings.rows.length} bookings`);
-      }
-    }
-
-    // Fetch and add Payments sheet if selected
-    if (selection.payments) {
-      let paymentsQuery = `SELECT 
-        p.id, p.payment_date,
-        c.name as client_name, c.phone as client_phone,
-        b.id as booking_id, b.booking_date,
-        s.name as service_name,
-        b.total_price as booking_total,
-        p.amount, p.payment_method, p.notes,
-        p.created_at, p.updated_at
-       FROM payments p 
-       LEFT JOIN bookings b ON p.booking_id = b.id 
-       LEFT JOIN clients c ON b.client_id = c.id 
-       LEFT JOIN services s ON b.service_id = s.id 
-       WHERE b.user_id = $1`;
-      const params = [userId];
-      
-      if (selectedIds.payments && selectedIds.payments.length > 0) {
-        paymentsQuery += ' AND p.id = ANY($2::int[])';
-        params.push(selectedIds.payments);
-      }
-      
-      paymentsQuery += ' ORDER BY p.payment_date DESC';
-      const payments = await query(paymentsQuery, params);
-      
-      if (payments.rows.length > 0) {
-        const worksheet = workbook.addWorksheet('Data Pembayaran');
-        
-        worksheet.columns = [
-          { header: 'ID Pembayaran', key: 'id', width: 14 },
-          { header: 'Tanggal Pembayaran', key: 'payment_date', width: 22 },
-          { header: 'Nama Klien', key: 'client_name', width: 28 },
-          { header: 'Telepon Klien', key: 'client_phone', width: 18 },
-          { header: 'ID Booking', key: 'booking_id', width: 12 },
-          { header: 'Tanggal Booking', key: 'booking_date', width: 20 },
-          { header: 'Nama Layanan', key: 'service_name', width: 28 },
-          { header: 'Total Booking', key: 'booking_total', width: 18 },
-          { header: 'Jumlah Dibayar', key: 'amount', width: 18 },
-          { header: 'Metode Pembayaran', key: 'payment_method', width: 22 },
-          { header: 'Catatan', key: 'notes', width: 35 },
-          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
-          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
-        ];
-        
-        payments.rows.forEach(row => {
-          worksheet.addRow({
-            id: row.id,
-            payment_date: formatDate(row.payment_date),
-            client_name: row.client_name || '',
-            client_phone: row.client_phone || '',
-            booking_id: row.booking_id,
-            booking_date: formatDate(row.booking_date),
-            service_name: row.service_name || '',
-            booking_total: row.booking_total ? formatCurrency(row.booking_total) : 'Rp 0',
-            amount: row.amount ? formatCurrency(row.amount) : 'Rp 0',
-            payment_method: row.payment_method || '',
-            notes: row.notes || '',
-            created_at: formatDate(row.created_at),
-            updated_at: formatDate(row.updated_at)
-          });
-        });
-        
-        styleWorksheet(worksheet);
-        console.log(`  ✅ Exported ${payments.rows.length} payments`);
       }
     }
 
@@ -2449,13 +2648,9 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
           { header: 'ID', key: 'id', width: 8 },
           { header: 'Tanggal Pengeluaran', key: 'expense_date', width: 22 },
           { header: 'Kategori Pengeluaran', key: 'category_name', width: 28 },
-          { header: 'Icon Kategori', key: 'category_icon', width: 14 },
-          { header: 'Warna Kategori', key: 'category_color', width: 18 },
           { header: 'Jumlah', key: 'amount', width: 18 },
           { header: 'Deskripsi', key: 'description', width: 40 },
-          { header: 'Catatan', key: 'notes', width: 40 },
-          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
-          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+          { header: 'Catatan', key: 'notes', width: 40 }
         ];
         
         expenses.rows.forEach(row => {
@@ -2463,13 +2658,9 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
             id: row.id,
             expense_date: formatDate(row.expense_date),
             category_name: row.category_name || '',
-            category_icon: row.category_icon || '',
-            category_color: row.category_color || '',
             amount: row.amount ? formatCurrency(row.amount) : 'Rp 0',
             description: row.description || '',
-            notes: row.notes || '',
-            created_at: formatDate(row.created_at),
-            updated_at: formatDate(row.updated_at)
+            notes: row.notes || ''
           });
         });
         
@@ -2502,9 +2693,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
           { header: 'ID', key: 'id', width: 8 },
           { header: 'Nama Kategori', key: 'name', width: 32 },
           { header: 'Icon', key: 'icon', width: 14 },
-          { header: 'Warna', key: 'color', width: 18 },
-          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
-          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+          { header: 'Warna', key: 'color', width: 18 }
         ];
         
         expenseCategories.rows.forEach(row => {
@@ -2512,9 +2701,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
             id: row.id,
             name: row.name || '',
             icon: row.icon || '',
-            color: row.color || '',
-            created_at: formatDate(row.created_at),
-            updated_at: formatDate(row.updated_at)
+            color: row.color || ''
           });
         });
         
@@ -2526,8 +2713,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
     // Fetch and add Clients sheet if selected
     if (selection.clients) {
       let clientsQuery = `SELECT 
-        id, name, phone, email, address, notes,
-        created_at, updated_at
+        id, name, phone, address
        FROM clients 
        WHERE user_id = $1`;
       const params = [userId];
@@ -2547,11 +2733,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
           { header: 'ID', key: 'id', width: 8 },
           { header: 'Nama Klien', key: 'name', width: 32 },
           { header: 'Telepon', key: 'phone', width: 18 },
-          { header: 'Email', key: 'email', width: 30 },
-          { header: 'Alamat', key: 'address', width: 45 },
-          { header: 'Catatan', key: 'notes', width: 40 },
-          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
-          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+          { header: 'Alamat', key: 'address', width: 45 }
         ];
         
         clients.rows.forEach(row => {
@@ -2559,11 +2741,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
             id: row.id,
             name: row.name || '',
             phone: row.phone || '',
-            email: row.email || '',
-            address: row.address || '',
-            notes: row.notes || '',
-            created_at: formatDate(row.created_at),
-            updated_at: formatDate(row.updated_at)
+            address: row.address || ''
           });
         });
         
@@ -2575,8 +2753,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
     // Fetch and add Services sheet if selected
     if (selection.services) {
       let servicesQuery = `SELECT 
-        id, name, description, price, duration,
-        created_at, updated_at
+        id, name, price, duration
        FROM services 
        WHERE user_id = $1`;
       const params = [userId];
@@ -2595,22 +2772,16 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
         worksheet.columns = [
           { header: 'ID', key: 'id', width: 8 },
           { header: 'Nama Layanan', key: 'name', width: 32 },
-          { header: 'Deskripsi', key: 'description', width: 45 },
           { header: 'Harga', key: 'price', width: 18 },
-          { header: 'Durasi (menit)', key: 'duration', width: 18 },
-          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
-          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+          { header: 'Durasi (menit)', key: 'duration', width: 18 }
         ];
         
         services.rows.forEach(row => {
           worksheet.addRow({
             id: row.id,
             name: row.name || '',
-            description: row.description || '',
             price: row.price ? formatCurrency(row.price) : 'Rp 0',
-            duration: row.duration || '',
-            created_at: formatDate(row.created_at),
-            updated_at: formatDate(row.updated_at)
+            duration: row.duration || ''
           });
         });
         
@@ -2619,13 +2790,105 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
       }
     }
 
+    // Fetch and add Responsible Parties sheet if selected
+    if (selection.responsibleParties) {
+      let responsiblePartiesQuery = `SELECT 
+        id, name, phone, address,
+        created_at, updated_at
+       FROM responsible_parties 
+       WHERE user_id = $1`;
+      const params = [userId];
+      
+      if (selectedIds.responsibleParties && selectedIds.responsibleParties.length > 0) {
+        responsiblePartiesQuery += ' AND id = ANY($2::int[])';
+        params.push(selectedIds.responsibleParties);
+      }
+      
+      responsiblePartiesQuery += ' ORDER BY name';
+      const responsibleParties = await query(responsiblePartiesQuery, params);
+      
+      if (responsibleParties.rows.length > 0) {
+        const worksheet = workbook.addWorksheet('Data Penanggung Jawab');
+        
+        worksheet.columns = [
+          { header: 'ID', key: 'id', width: 8 },
+          { header: 'Nama', key: 'name', width: 32 },
+          { header: 'Telepon', key: 'phone', width: 18 },
+          { header: 'Alamat', key: 'address', width: 40 },
+          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
+          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+        ];
+        
+        responsibleParties.rows.forEach(row => {
+          worksheet.addRow({
+            id: row.id,
+            name: row.name || '',
+            phone: row.phone || '',
+            address: row.address || '',
+            created_at: formatDate(row.created_at),
+            updated_at: formatDate(row.updated_at)
+          });
+        });
+        
+        styleWorksheet(worksheet);
+        console.log(`  ✅ Exported ${responsibleParties.rows.length} responsible parties`);
+      }
+    }
+
+    // Fetch and add Service Responsible Parties sheet if selected
+    if (selection.serviceResponsibleParties) {
+      let serviceResponsiblePartiesQuery = `SELECT
+        id, name, phone, address, service_id,
+        created_at, updated_at
+       FROM service_responsible_parties
+       WHERE user_id = $1`;
+      const params = [userId];
+
+      if (selectedIds.serviceResponsibleParties && selectedIds.serviceResponsibleParties.length > 0) {
+        serviceResponsiblePartiesQuery += ' AND id = ANY($2::int[])';
+        params.push(selectedIds.serviceResponsibleParties);
+      }
+
+      serviceResponsiblePartiesQuery += ' ORDER BY name';
+      const serviceResponsibleParties = await query(serviceResponsiblePartiesQuery, params);
+
+      if (serviceResponsibleParties.rows.length > 0) {
+        const worksheet = workbook.addWorksheet('Data Penanggung Jawab Layanan');
+
+        worksheet.columns = [
+          { header: 'ID', key: 'id', width: 8 },
+          { header: 'Nama', key: 'name', width: 32 },
+          { header: 'Telepon', key: 'phone', width: 18 },
+          { header: 'Alamat', key: 'address', width: 40 },
+          { header: 'ID Layanan', key: 'service_id', width: 12 },
+          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
+          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+        ];
+
+        serviceResponsibleParties.rows.forEach(row => {
+          worksheet.addRow({
+            id: row.id,
+            name: row.name || '',
+            phone: row.phone || '',
+            address: row.address || '',
+            service_id: row.service_id || '',
+            created_at: formatDate(row.created_at),
+            updated_at: formatDate(row.updated_at)
+          });
+        });
+
+        styleWorksheet(worksheet);
+        console.log(`  ✅ Exported ${serviceResponsibleParties.rows.length} service responsible parties`);
+      }
+    }
+
     // Add company settings sheet (if selected and exists)
     if (selection.companySettings) {
       const companySettings = await query(
         `SELECT 
           company_name, company_address, company_phone, company_email,
-          company_logo_url, bank_name, account_number, account_holder_name,
-          created_at, updated_at
+          bank_name, account_number, account_holder_name,
+          bank_name_alt, account_number_alt, account_holder_name_alt
          FROM company_settings 
          WHERE user_id = $1`,
         [userId]
@@ -2639,26 +2902,33 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
           { header: 'Alamat', key: 'company_address', width: 48 },
           { header: 'Telepon', key: 'company_phone', width: 18 },
           { header: 'Email', key: 'company_email', width: 30 },
-          { header: 'Logo URL', key: 'company_logo_url', width: 50 },
-          { header: 'Nama Bank', key: 'bank_name', width: 26 },
-          { header: 'Nomor Rekening', key: 'account_number', width: 24 },
-          { header: 'Nama Pemegang Rekening', key: 'account_holder_name', width: 36 },
-          { header: 'Tanggal Dibuat', key: 'created_at', width: 20 },
-          { header: 'Tanggal Diupdate', key: 'updated_at', width: 20 }
+          { header: 'Informasi Rekening', key: 'bank_accounts', width: 50 }
         ];
         
         companySettings.rows.forEach(row => {
+          // Build bank accounts info
+          let bankAccounts = '';
+          if (row.bank_name && row.account_number) {
+            bankAccounts += `${row.bank_name}: ${row.account_number}`;
+            if (row.account_holder_name) {
+              bankAccounts += ` (${row.account_holder_name})`;
+            }
+            bankAccounts += '\n';
+          }
+          
+          if (row.bank_name_alt && row.account_number_alt) {
+            bankAccounts += `${row.bank_name_alt}: ${row.account_number_alt}`;
+            if (row.account_holder_name_alt) {
+              bankAccounts += ` (${row.account_holder_name_alt})`;
+            }
+          }
+          
           worksheet.addRow({
             company_name: row.company_name || '',
             company_address: row.company_address || '',
             company_phone: row.company_phone || '',
             company_email: row.company_email || '',
-            company_logo_url: row.company_logo_url || '',
-            bank_name: row.bank_name || '',
-            account_number: row.account_number || '',
-            account_holder_name: row.account_holder_name || '',
-            created_at: formatDate(row.created_at),
-            updated_at: formatDate(row.updated_at)
+            bank_accounts: bankAccounts.trim()
           });
         });
         
@@ -2695,6 +2965,8 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
       companySettings: req.query.companySettings !== 'false',
       clients: req.query.clients !== 'false',
       services: req.query.services !== 'false',
+      responsibleParties: req.query.responsibleParties !== 'false',
+      serviceResponsibleParties: req.query.serviceResponsibleParties !== 'false',
       bookings: req.query.bookings !== 'false',
       payments: req.query.payments !== 'false',
       expenses: req.query.expenses !== 'false',
@@ -2705,6 +2977,8 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
     const selectedIds = {
       clients: req.query.clientsIds ? JSON.parse(req.query.clientsIds) : null,
       services: req.query.servicesIds ? JSON.parse(req.query.servicesIds) : null,
+      responsibleParties: req.query.responsiblePartiesIds ? JSON.parse(req.query.responsiblePartiesIds) : null,
+      serviceResponsibleParties: req.query.serviceResponsiblePartiesIds ? JSON.parse(req.query.serviceResponsiblePartiesIds) : null,
       bookings: req.query.bookingsIds ? JSON.parse(req.query.bookingsIds) : null,
       payments: req.query.paymentsIds ? JSON.parse(req.query.paymentsIds) : null,
       expenses: req.query.expensesIds ? JSON.parse(req.query.expensesIds) : null,
@@ -2758,6 +3032,44 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
     } else {
       backup.data.services = [];
       console.log(`  ⏭️  Skipped services`);
+    }
+
+    // Fetch responsible parties if selected
+    if (selection.responsibleParties) {
+      let responsiblePartiesQuery = 'SELECT * FROM responsible_parties WHERE user_id = $1';
+      const params = [userId];
+      
+      if (selectedIds.responsibleParties && selectedIds.responsibleParties.length > 0) {
+        responsiblePartiesQuery += ' AND id = ANY($2::int[])';
+        params.push(selectedIds.responsibleParties);
+      }
+      
+      responsiblePartiesQuery += ' ORDER BY created_at';
+      const responsibleParties = await query(responsiblePartiesQuery, params);
+      backup.data.responsibleParties = responsibleParties.rows;
+      console.log(`  ✅ Exported ${responsibleParties.rows.length} responsible parties`);
+    } else {
+      backup.data.responsibleParties = [];
+      console.log(`  ⏭️  Skipped responsible parties`);
+    }
+
+    // Fetch service responsible parties if selected
+    if (selection.serviceResponsibleParties) {
+      let serviceResponsiblePartiesQuery = 'SELECT * FROM service_responsible_parties WHERE user_id = $1';
+      const params = [userId];
+      
+      if (selectedIds.serviceResponsibleParties && selectedIds.serviceResponsibleParties.length > 0) {
+        serviceResponsiblePartiesQuery += ' AND id = ANY($2::int[])';
+        params.push(selectedIds.serviceResponsibleParties);
+      }
+      
+      serviceResponsiblePartiesQuery += ' ORDER BY created_at';
+      const serviceResponsibleParties = await query(serviceResponsiblePartiesQuery, params);
+      backup.data.serviceResponsibleParties = serviceResponsibleParties.rows;
+      console.log(`  ✅ Exported ${serviceResponsibleParties.rows.length} service responsible parties`);
+    } else {
+      backup.data.serviceResponsibleParties = [];
+      console.log(`  ⏭️  Skipped service responsible parties`);
     }
 
     // Fetch bookings if selected (with client and service names for duplicate detection)
@@ -2979,7 +3291,15 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
           const servicesDeleted = await query('DELETE FROM services WHERE user_id = $1', [userId]);
           console.log(`  ✅ Deleted ${servicesDeleted.rowCount} services`);
           
-          // 7. Delete company_settings (references user)
+          // 7. Delete service_responsible_parties (references services and responsible_parties)
+          const serviceResponsiblePartiesDeleted = await query('DELETE FROM service_responsible_parties WHERE user_id = $1', [userId]);
+          console.log(`  ✅ Deleted ${serviceResponsiblePartiesDeleted.rowCount} service responsible parties`);
+          
+          // 8. Delete responsible_parties (can be referenced by service_responsible_parties)
+          const responsiblePartiesDeleted = await query('DELETE FROM responsible_parties WHERE user_id = $1', [userId]);
+          console.log(`  ✅ Deleted ${responsiblePartiesDeleted.rowCount} responsible parties`);
+          
+          // 9. Delete company_settings (references user)
           const settingsDeleted = await query('DELETE FROM company_settings WHERE user_id = $1', [userId]);
           console.log(`  ✅ Deleted ${settingsDeleted.rowCount} company settings`);
           
@@ -3031,6 +3351,92 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
           }
         }
 
+        // Import responsible parties
+        // For 'replace' mode: import ALL responsible parties
+        // For 'add' mode: import only those flagged for import (not duplicates)
+        const responsiblePartyImportIndices = new Set(importFlags.responsibleParties || []);
+        
+        if (backupData.data.responsibleParties && backupData.data.responsibleParties.length > 0) {
+          for (let i = 0; i < backupData.data.responsibleParties.length; i++) {
+            const responsibleParty = backupData.data.responsibleParties[i];
+            // Import if: replace mode (import all) OR add mode with flag
+            const shouldImport = importType === 'replace' || responsiblePartyImportIndices.has(i);
+            
+            if (shouldImport) {
+              await query(
+                `INSERT INTO responsible_parties (user_id, name, phone, address, created_at, updated_at) 
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [userId, responsibleParty.name, responsibleParty.phone, responsibleParty.address || null, responsibleParty.created_at, responsibleParty.updated_at]
+              );
+              console.log(`  ✅ Imported responsible party: ${responsibleParty.name}`);
+            }
+          }
+        }
+
+        // Create ID mappings for services and responsible parties (needed for service_responsible_parties)
+        const serviceIdMap = {};
+        const responsiblePartyIdMap = {};
+
+        // Get all services and responsible parties for mapping
+        const newServices = await query('SELECT id, name FROM services WHERE user_id = $1', [userId]);
+        const newResponsibleParties = await query('SELECT id, name, phone FROM responsible_parties WHERE user_id = $1', [userId]);
+
+        // Create mapping from old backup data to new database IDs
+        if (backupData.data.services && backupData.data.services.length > 0) {
+          for (const oldService of backupData.data.services) {
+            const matchingService = newServices.rows.find(s => 
+              s.name && oldService.name && s.name.trim().toLowerCase() === oldService.name.trim().toLowerCase()
+            );
+            if (matchingService) {
+              serviceIdMap[oldService.id] = matchingService.id;
+            }
+          }
+        }
+
+        if (backupData.data.responsibleParties && backupData.data.responsibleParties.length > 0) {
+          for (const oldResponsibleParty of backupData.data.responsibleParties) {
+            const matchingResponsibleParty = newResponsibleParties.rows.find(rp => 
+              (rp.name && oldResponsibleParty.name && rp.name.trim().toLowerCase() === oldResponsibleParty.name.trim().toLowerCase()) ||
+              (rp.phone && oldResponsibleParty.phone && rp.phone.replace(/\D/g, '') === oldResponsibleParty.phone.replace(/\D/g, ''))
+            );
+            if (matchingResponsibleParty) {
+              responsiblePartyIdMap[oldResponsibleParty.id] = matchingResponsibleParty.id;
+            }
+          }
+        }
+
+        console.log('📊 Service & Responsible Party ID Mapping Summary:');
+        console.log(`  Services mapped: ${Object.keys(serviceIdMap).length}/${backupData.data.services?.length || 0}`);
+        console.log(`  Responsible Parties mapped: ${Object.keys(responsiblePartyIdMap).length}/${backupData.data.responsibleParties?.length || 0}`);
+
+        // Import service responsible parties
+        // For 'replace' mode: import ALL service responsible parties
+        // For 'add' mode: import only those flagged for import (not duplicates)
+        const serviceResponsiblePartyImportIndices = new Set(importFlags.serviceResponsibleParties || []);
+        
+        if (backupData.data.serviceResponsibleParties && backupData.data.serviceResponsibleParties.length > 0) {
+          for (let i = 0; i < backupData.data.serviceResponsibleParties.length; i++) {
+            const serviceResponsibleParty = backupData.data.serviceResponsibleParties[i];
+            // Import if: replace mode (import all) OR add mode with flag
+            const shouldImport = importType === 'replace' || serviceResponsiblePartyImportIndices.has(i);
+            
+            if (shouldImport) {
+              const newServiceId = serviceIdMap[serviceResponsibleParty.service_id];
+              
+              if (newServiceId) {
+                await query(
+                  `INSERT INTO service_responsible_parties (user_id, name, phone, address, service_id, created_at, updated_at) 
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                  [userId, serviceResponsibleParty.name, serviceResponsibleParty.phone, serviceResponsibleParty.address, newServiceId, serviceResponsibleParty.created_at, serviceResponsibleParty.updated_at]
+                );
+                console.log(`  ✅ Imported service responsible party: ${serviceResponsibleParty.name} for Service ${newServiceId}`);
+              } else {
+                console.log(`  ⚠️  Skipped service responsible party (service not found): Service ID ${serviceResponsibleParty.service_id} → ${newServiceId}`);
+              }
+            }
+          }
+        }
+
         // Import expense categories (preserve default/system categories)
         // For 'replace' mode: import ALL categories
         // For 'add' mode: import only those flagged for import (not duplicates)
@@ -3073,15 +3479,13 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
 
         // Import bookings (need to map old IDs to new IDs)
         const clientIdMap = {};
-        const serviceIdMap = {};
         const bookingIdMap = {};
 
         if (backupData.data.bookings && backupData.data.bookings.length > 0) {
-          // Get ID mappings for clients and services
-          // For 'add' mode: map ALL clients/services (both newly imported and existing)
+          // Get ID mappings for clients
+          // For 'add' mode: map ALL clients (both newly imported and existing)
           // For 'replace' mode: map only newly imported ones
           const newClients = await query('SELECT id, name, phone, email FROM clients WHERE user_id = $1', [userId]);
-          const newServices = await query('SELECT id, name FROM services WHERE user_id = $1', [userId]);
 
           // Create mapping from old booking data to new database IDs
           if (backupData.data.clients && backupData.data.clients.length > 0) {
@@ -3098,20 +3502,10 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
             }
           }
 
-          if (backupData.data.services && backupData.data.services.length > 0) {
-            for (const oldService of backupData.data.services) {
-              const matchingService = newServices.rows.find(s => 
-                s.name && oldService.name && s.name.trim().toLowerCase() === oldService.name.trim().toLowerCase()
-              );
-              if (matchingService) {
-                serviceIdMap[oldService.id] = matchingService.id;
-              }
-            }
-          }
-
           console.log('📊 ID Mapping Summary:');
           console.log(`  Clients mapped: ${Object.keys(clientIdMap).length}/${backupData.data.clients?.length || 0}`);
           console.log(`  Services mapped: ${Object.keys(serviceIdMap).length}/${backupData.data.services?.length || 0}`);
+          console.log(`  Responsible Parties mapped: ${Object.keys(responsiblePartyIdMap).length}/${backupData.data.responsibleParties?.length || 0}`);
           console.log(`  Bookings to import: ${backupData.data.bookings.length}`);
           console.log('  Client ID Map:', clientIdMap);
           console.log('  Service ID Map:', serviceIdMap);
@@ -3131,16 +3525,21 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
                     notesObj.services = notesObj.services.map(service => {
                       const oldServiceId = parseInt(service.service_id);
                       const mappedServiceId = serviceIdMap[oldServiceId];
+                      const oldResponsiblePartyId = parseInt(service.responsible_party_id);
+                      const mappedResponsiblePartyId = responsiblePartyIdMap[oldResponsiblePartyId];
+                      
+                      const updatedService = { ...service };
                       if (mappedServiceId) {
-                        return {
-                          ...service,
-                          service_id: mappedServiceId.toString()
-                        };
+                        updatedService.service_id = mappedServiceId.toString();
                       }
-                      return service;
+                      if (mappedResponsiblePartyId) {
+                        updatedService.responsible_party_id = mappedResponsiblePartyId.toString();
+                      }
+                      
+                      return updatedService;
                     });
                     updatedNotes = JSON.stringify(notesObj);
-                    console.log(`  🔄 Mapped ${notesObj.services.length} service IDs in booking notes`);
+                    console.log(`  🔄 Mapped ${notesObj.services.length} service IDs and responsible party IDs in booking notes`);
                   }
                 } catch (e) {
                   // If notes is not JSON, keep original

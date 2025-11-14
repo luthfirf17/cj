@@ -43,7 +43,7 @@ const getDashboardStats = async (req, res) => {
     
     // Recent users (last 10)
     const recentUsersResult = await query(
-      `SELECT id, full_name, email, phone, created_at, last_login, is_active 
+      `SELECT id, full_name, email, phone, created_at, is_active 
        FROM users 
        WHERE role = 'user' 
        ORDER BY created_at DESC 
@@ -115,7 +115,7 @@ const getAllUsers = async (req, res) => {
     // Get users
     const usersResult = await query(
       `SELECT u.id, u.full_name, u.email, u.phone, u.created_at, u.updated_at, 
-              u.last_login, u.is_active,
+              u.is_active,
               COUNT(DISTINCT b.id) as booking_count,
               COUNT(DISTINCT c.id) as client_count,
               COALESCE(SUM(b.total_price), 0) as total_revenue
@@ -123,7 +123,7 @@ const getAllUsers = async (req, res) => {
        LEFT JOIN bookings b ON u.id = b.user_id
        LEFT JOIN clients c ON u.id = c.user_id
        ${whereClause}
-       GROUP BY u.id, u.full_name, u.email, u.phone, u.created_at, u.updated_at, u.last_login, u.is_active
+       GROUP BY u.id, u.full_name, u.email, u.phone, u.created_at, u.updated_at, u.is_active
        ORDER BY u.created_at DESC
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...params, limit, offset]
@@ -151,7 +151,7 @@ const getUserById = async (req, res) => {
     
     const userResult = await query(
       `SELECT u.id, u.full_name, u.email, u.phone, u.created_at, u.updated_at, 
-              u.last_login, u.is_active,
+              u.is_active,
               COUNT(DISTINCT b.id) as booking_count,
               COUNT(DISTINCT c.id) as client_count,
               COUNT(DISTINCT s.id) as service_count,

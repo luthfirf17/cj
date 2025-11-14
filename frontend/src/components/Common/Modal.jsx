@@ -48,10 +48,10 @@ const Modal = ({
   if (!isOpen) return null;
 
   const sizes = {
-    sm: 'max-w-md',
-    md: 'max-w-2xl',
-    lg: 'max-w-4xl',
-    xl: 'max-w-6xl',
+    sm: 'max-w-sm sm:max-w-md',
+    md: 'max-w-sm sm:max-w-2xl',
+    lg: 'max-w-sm sm:max-w-4xl',
+    xl: 'max-w-sm sm:max-w-6xl',
     full: 'max-w-full mx-4',
   };
 
@@ -84,8 +84,8 @@ const Modal = ({
           `}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h3 className="text-xl font-semibold text-gray-900" id="modal-title">
+          <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-900" id="modal-title">
               {title}
             </h3>
             {showCloseButton && (
@@ -93,19 +93,19 @@ const Modal = ({
                 onClick={onClose}
                 className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
               >
-                <FiX size={24} />
+                <FiX size={20} className="sm:w-6 sm:h-6" />
               </button>
             )}
           </div>
 
           {/* Body */}
-          <div className="p-6 overflow-y-auto flex-1">
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1">
             {children}
           </div>
 
           {/* Footer */}
           {footer && (
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+            <div className="flex items-center justify-end gap-2 sm:gap-3 p-4 sm:p-6 border-t border-gray-200">
               {footer}
             </div>
           )}

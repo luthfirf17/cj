@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FiCalendar,
@@ -56,8 +56,8 @@ const UserDashboard = () => {
   
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterPaymentStatus, setFilterPaymentStatus] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState([]); // allow multi-select of status cards
+  const [selectedPaymentStatuses, setSelectedPaymentStatuses] = useState([]); // allow multi-select of payment status cards
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'calendar'
   
   // Modern multi-criteria sorting
@@ -67,14 +67,17 @@ const UserDashboard = () => {
   const [showDateOptions, setShowDateOptions] = useState(false);
   const [showClientOptions, setShowClientOptions] = useState(false);
   const [showServiceOptions, setShowServiceOptions] = useState(false);
+  const [showResponsibleOptions, setShowResponsibleOptions] = useState(false);
   const [selectedMonths, setSelectedMonths] = useState([]);
   const [selectedYears, setSelectedYears] = useState([]);
   const [selectedClients, setSelectedClients] = useState([]);
   const [selectedServices, setSelectedServices] = useState([]);
+  const [selectedResponsibleParties, setSelectedResponsibleParties] = useState([]);
   
   // Search within dropdowns
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [serviceSearchQuery, setServiceSearchQuery] = useState('');
+  const [responsibleSearchQuery, setResponsibleSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -97,6 +100,10 @@ const UserDashboard = () => {
   const [availableClients, setAvailableClients] = useState([]);
   const [availableMonths, setAvailableMonths] = useState([]);
   const [availableYears, setAvailableYears] = useState([]);
+  
+  // Global responsible parties data
+  const [globalResponsibleParties, setGlobalResponsibleParties] = useState([]);
+  const [serviceResponsibleParties, setServiceResponsibleParties] = useState([]);
 
   // Stats Data
   const [stats, setStats] = useState({
@@ -124,6 +131,8 @@ const UserDashboard = () => {
   useEffect(() => {
     fetchStats();
     fetchFilterOptions();
+    fetchGlobalResponsibleParties();
+    fetchServiceResponsibleParties();
   }, []);
 
   // Fetch Bookings with debounce (faster for search)
@@ -133,7 +142,7 @@ const UserDashboard = () => {
     }, 150); // 150ms debounce for faster realtime search
 
     return () => clearTimeout(timeoutId);
-  }, [pagination.currentPage, searchQuery, filterStatus, filterPaymentStatus, filterMonth, filterYear, filterService, filterClient]);
+  }, [pagination.currentPage, selectedStatuses, selectedPaymentStatuses, filterMonth, filterYear, filterService, filterClient]);
 
   const fetchStats = async () => {
     try {
@@ -193,6 +202,35 @@ const UserDashboard = () => {
     }
   };
 
+  const fetchGlobalResponsibleParties = async () => {
+    try {
+      const response = await api.get('/user/responsible-parties', {
+        params: { user_id: 2 }
+      });
+      
+      if (response.data.success) {
+        console.log('👥 Global Responsible Parties loaded:', response.data.data.length, 'parties');
+        setGlobalResponsibleParties(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching global responsible parties:', error);
+    }
+  };
+
+  const fetchServiceResponsibleParties = async () => {
+    try {
+      const response = await api.get('/user/service-responsible-parties', {
+        params: { user_id: 2 }
+      });
+      if (response.data.success) {
+        console.log('🔗 Service Responsible Parties loaded:', response.data.data.length, 'mappings');
+        setServiceResponsibleParties(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching service responsible parties:', error);
+    }
+  };
+
   const fetchBookings = async () => {
     setLoading(true);
     try {
@@ -205,22 +243,24 @@ const UserDashboard = () => {
       // Don't send search to backend - we'll do client-side filtering
       // if (searchQuery) params.search = searchQuery;
       
-      // Convert Indonesian status to English for backend
-      if (filterStatus) {
-        let backendStatus = filterStatus;
-        if (filterStatus === 'Dijadwalkan') backendStatus = 'confirmed';
-        else if (filterStatus === 'Selesai') backendStatus = 'completed';
-        else if (filterStatus === 'Dibatalkan') backendStatus = 'cancelled';
+      // Convert Indonesian status to English for backend only when a single status is selected
+      if (selectedStatuses && selectedStatuses.length === 1) {
+        let backendStatus = selectedStatuses[0];
+        if (backendStatus === 'Dijadwalkan') backendStatus = 'confirmed';
+        else if (backendStatus === 'Selesai') backendStatus = 'completed';
+        else if (backendStatus === 'Dibatalkan') backendStatus = 'cancelled';
         params.status = backendStatus;
       }
       
       // Convert Indonesian payment status to English for backend
-      if (filterPaymentStatus) {
-        let backendPaymentStatus = filterPaymentStatus;
-        if (filterPaymentStatus === 'Belum Bayar') backendPaymentStatus = 'unpaid';
-        else if (filterPaymentStatus === 'DP') backendPaymentStatus = 'partial';
-        else if (filterPaymentStatus === 'Lunas') backendPaymentStatus = 'paid';
-        params.payment_status = backendPaymentStatus;
+      if (selectedPaymentStatuses && selectedPaymentStatuses.length > 0) {
+        const backendPaymentStatuses = selectedPaymentStatuses.map(status => {
+          if (status === 'Belum Bayar') return 'unpaid';
+          if (status === 'DP') return 'partial';
+          if (status === 'Lunas') return 'paid';
+          return status;
+        });
+        params.payment_statuses = backendPaymentStatuses.join(',');
       }
 
       const response = await api.get('/user/bookings', { params });
@@ -245,16 +285,22 @@ const UserDashboard = () => {
           let allServices = [];
           
           if (booking.booking_details && booking.booking_details.services && Array.isArray(booking.booking_details.services)) {
-            // Use booking_details.services for multiple services
+            // Use booking_details.services for multiple services with full details
             allServices = booking.booking_details.services
               .filter(s => s) // Filter out null/undefined services
-              .map(s => {
-                // Try different possible property names
-                return s.name || s.service_name || s.serviceName || s;
-              });
-          } else if (booking.services && Array.isArray(booking.services) && booking.services.length > 0) {
-            // Fallback to old services array (for backward compatibility)
-            allServices = booking.services.filter(s => s); // Filter out null/undefined
+              .map(s => ({
+                id: Number(s.service_id || s.id),
+                name: s.name || s.service_name || s.serviceName || s,
+                responsible_party_id: s.responsible_party_id || null,
+                quantity: s.quantity || 1
+              }));
+          } else {
+            // Single service case - use booking.service_id and service_name
+            allServices = [{
+              id: booking.service_id,
+              name: booking.service_name,
+              responsible_party_id: null // Will be resolved during filtering
+            }];
           }
           
           const convertedBooking = {
@@ -267,7 +313,8 @@ const UserDashboard = () => {
             booking_date: booking.booking_date || '',
             booking_time: booking.booking_time || '',
             location_name: booking.location_name || '',
-            location_map_url: booking.location_map_url || ''
+            location_map_url: booking.location_map_url || '',
+            responsible_parties: booking.booking_details?.responsible_parties || [] // Extract responsible parties from booking level
           };
           
           return convertedBooking;
@@ -287,7 +334,7 @@ const UserDashboard = () => {
             // Search in services
             const matchService = booking.services && Array.isArray(booking.services) && booking.services.some(service => {
               if (!service) return false;
-              const serviceName = typeof service === 'string' ? service : (service?.name || '');
+              const serviceName = service.name || '';
               return serviceName.toLowerCase().includes(query);
             });
             
@@ -341,7 +388,7 @@ const UserDashboard = () => {
           convertedBookings = convertedBookings.filter(booking => {
             return booking.services && Array.isArray(booking.services) && booking.services.some(service => {
               if (!service) return false;
-              const serviceName = typeof service === 'string' ? service : (service?.name || '');
+              const serviceName = service.name || '';
               return serviceName === filterService;
             });
           });
@@ -392,7 +439,9 @@ const UserDashboard = () => {
 
   // Handle Filter
   const handleFilterStatus = (e) => {
-    setFilterStatus(e.target.value);
+    // support dropdown/legacy single-value setter by replacing selectedStatuses with single value
+    const val = e.target.value;
+    setSelectedStatuses(val ? [val] : []);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
@@ -419,7 +468,8 @@ const UserDashboard = () => {
       const criteriaMap = {
         'date': { id: 'date', order: 'desc', label: 'Tanggal Terbaru' },
         'client': { id: 'client', order: 'asc', label: 'Nama Klien A→Z' },
-        'service': { id: 'service', order: 'asc', label: 'Layanan A→Z' }
+        'service': { id: 'service', order: 'asc', label: 'Layanan A→Z' },
+        'responsible': { id: 'responsible', order: 'asc', label: 'Penanggung Jawab A→Z' }
       };
       
       return [...prev, criteriaMap[criteriaId]];
@@ -441,6 +491,9 @@ const UserDashboard = () => {
     } else if (criteriaId === 'service') {
       setSelectedServices([]);
       setServiceSearchQuery('');
+    } else if (criteriaId === 'responsible') {
+      setSelectedResponsibleParties([]);
+      setResponsibleSearchQuery('');
     }
   };
   
@@ -450,8 +503,10 @@ const UserDashboard = () => {
     setSelectedYears([]);
     setSelectedClients([]);
     setSelectedServices([]);
+    setSelectedResponsibleParties([]);
     setClientSearchQuery('');
     setServiceSearchQuery('');
+    setResponsibleSearchQuery('');
   };
   
   // Toggle sub-options
@@ -479,6 +534,15 @@ const UserDashboard = () => {
     );
   };
 
+  const toggleResponsible = (responsibleName) => {
+    console.log('🎯 toggleResponsible called with:', responsibleName);
+    setSelectedResponsibleParties(prev => {
+      const newSelection = prev.includes(responsibleName) ? prev.filter(r => r !== responsibleName) : [...prev, responsibleName];
+      console.log('🎯 New selectedResponsibleParties:', newSelection);
+      return newSelection;
+    });
+  };
+
   // Table Columns
   const columns = [
     {
@@ -494,13 +558,87 @@ const UserDashboard = () => {
     {
       header: 'Layanan',
       accessor: 'services',
-      render: (value) => (
+      render: (value, row) => (
         <div className="space-y-1">
-          {value.map((service, index) => (
-            <div key={index} className="text-sm text-gray-700">
-              • {service}
+          {value && value.length > 0 ? value.map((service, index) => {
+            // Find responsible party for this service using the same logic as filtering
+            let responsibleParty = null;
+            
+            // First priority: use service.responsible_party_id from booking data
+            if (service.responsible_party_id) {
+              responsibleParty = globalResponsibleParties.find(grp =>
+                Number(grp.id) === Number(service.responsible_party_id)
+              );
+            }
+            
+            // Second priority: try to find by service-responsible mapping
+            if (!responsibleParty && service.id) {
+              responsibleParty = serviceResponsibleParties.find(srp =>
+                Number(srp.service_id) === Number(service.id)
+              );
+            }
+            
+            // Third priority: try to match by service name from global parties (for legacy data)
+            if (!responsibleParty && service.name) {
+              responsibleParty = globalResponsibleParties.find(grp =>
+                grp.name && service.name.toLowerCase().includes(grp.name.toLowerCase())
+              );
+            }
+            
+            return (
+              <div key={index} className="text-xs">
+                <div className="text-gray-700 font-medium">
+                  • {service.name || service}{service.quantity && service.quantity > 1 ? ` (${service.quantity}x)` : ''}
+                </div>
+                {responsibleParty ? (
+                  <div className="flex items-center gap-1 mt-0.5 text-xs text-gray-500">
+                    <FiUser className="w-2.5 h-2.5" />
+                    <span>{responsibleParty.name}</span>
+                    {responsibleParty.phone && (
+                      <a
+                        href={getWhatsAppLink(responsibleParty.phone, responsibleParty.countryCode || '62')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-green-600 hover:text-green-700 transition-colors"
+                        title={`WhatsApp ${responsibleParty.name}`}
+                      >
+                        <FiMessageCircle className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            );
+          }) : (
+            <div className="text-xs text-gray-500">No services</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: 'Penanggung Jawab Booking',
+      accessor: 'responsible_parties',
+      render: (value, row) => (
+        <div className="space-y-1">
+          {value && value.length > 0 ? value.map((party, index) => (
+            <div key={index} className="flex items-center gap-1 text-xs text-gray-500">
+              <FiUser className="w-2.5 h-2.5" />
+              <span>{party.name}</span>
+              {party.phone && (
+                <a
+                  href={getWhatsAppLink(party.phone, party.countryCode || '62')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-600 hover:text-green-700 transition-colors"
+                  title={`WhatsApp ${party.name}`}
+                >
+                  <FiMessageCircle className="w-2.5 h-2.5" />
+                </a>
+              )}
             </div>
-          ))}
+          )) : (
+            <div className="text-xs text-gray-400">-</div>
+          )}
         </div>
       ),
     },
@@ -508,18 +646,13 @@ const UserDashboard = () => {
       header: 'Tanggal, Waktu, Tempat',
       accessor: 'booking_date',
       render: (value, row) => {
-        console.log('🗓️ Rendering date cell for:', row.client_name, {
-          location_name: row.location_name,
-          location_map_url: row.location_map_url
-        });
-        
         return (
           <div>
-            <p className="text-sm text-gray-900">{format.date(value)}</p>
+            <p className="text-xs text-gray-900">{format.date(value)}</p>
             <p className="text-xs text-gray-500">{format.time(value)}</p>
             {row.location_name && row.location_name !== '' && (
-              <div className="flex items-center gap-1 mt-1">
-                <FiMapPin className="w-3 h-3 text-blue-600" />
+              <div className="flex items-center gap-1 mt-0.5">
+                <FiMapPin className="w-2.5 h-2.5 text-blue-600" />
                 <p className="text-xs text-blue-600">{row.location_name}</p>
               </div>
             )}
@@ -554,12 +687,14 @@ const UserDashboard = () => {
     {
       header: 'Total / Dibayar',
       accessor: 'total_amount',
-      render: (value, row) => (
-        <div>
-          <p className="text-sm font-medium text-gray-900">{format.currency(value)}</p>
-          <p className="text-xs text-gray-500">{format.currency(row.amount_paid)} dibayar</p>
-        </div>
-      ),
+      render: (value, row) => {
+        return (
+          <div>
+            <p className="text-xs font-medium text-gray-900">{format.currency(value)}</p>
+            <p className="text-xs text-gray-500">{format.currency(row.amount_paid)} dibayar</p>
+          </div>
+        );
+      },
     },
     {
       header: 'Aksi',
@@ -681,55 +816,160 @@ const UserDashboard = () => {
 
   // Handle card click for status filter
   const handleStatusCardClick = (status) => {
-    const newStatus = filterStatus === status ? '' : status;
-    setFilterStatus(newStatus);
+    // Toggle status in selectedStatuses array
+    setSelectedStatuses(prev => {
+      const exists = prev.includes(status);
+      if (exists) return prev.filter(s => s !== status);
+      return [...prev, status];
+    });
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
   // Handle card click for payment status filter
   const handlePaymentCardClick = (paymentStatus) => {
-    const newPaymentStatus = filterPaymentStatus === paymentStatus ? '' : paymentStatus;
-    setFilterPaymentStatus(newPaymentStatus);
+    setSelectedPaymentStatuses(prev => {
+      const exists = prev.includes(paymentStatus);
+      if (exists) return prev.filter(s => s !== paymentStatus);
+      return [...prev, paymentStatus];
+    });
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
   // Apply sub-filters first, then sort
-  let filteredBookings = [...bookings];
-  
-  // Apply month filter
-  if (selectedMonths.length > 0) {
-    filteredBookings = filteredBookings.filter(booking => {
-      const bookingDate = new Date(booking.booking_date);
-      const bookingMonth = String(bookingDate.getMonth() + 1).padStart(2, '0');
-      return selectedMonths.includes(bookingMonth);
-    });
-  }
-  
-  // Apply year filter
-  if (selectedYears.length > 0) {
-    filteredBookings = filteredBookings.filter(booking => {
-      const bookingDate = new Date(booking.booking_date);
-      const bookingYear = String(bookingDate.getFullYear());
-      return selectedYears.includes(bookingYear);
-    });
-  }
-  
-  // Apply client filter
-  if (selectedClients.length > 0) {
-    filteredBookings = filteredBookings.filter(booking => 
-      selectedClients.includes(booking.client_name)
-    );
-  }
-  
-  // Apply service filter
-  if (selectedServices.length > 0) {
-    filteredBookings = filteredBookings.filter(booking => 
-      booking.services && booking.services.some(service => {
-        const serviceName = typeof service === 'string' ? service : (service?.name || '');
-        return selectedServices.includes(serviceName);
-      })
-    );
-  }
+  const filteredBookings = useMemo(() => {
+    let filtered = [...bookings];
+
+    // Apply month filter
+    if (selectedMonths.length > 0) {
+      filtered = filtered.filter(booking => {
+        const bookingDate = new Date(booking.booking_date);
+        const bookingMonth = String(bookingDate.getMonth() + 1).padStart(2, '0');
+        return selectedMonths.includes(bookingMonth);
+      });
+    }
+
+    // Apply year filter
+    if (selectedYears.length > 0) {
+      filtered = filtered.filter(booking => {
+        const bookingDate = new Date(booking.booking_date);
+        const bookingYear = String(bookingDate.getFullYear());
+        return selectedYears.includes(bookingYear);
+      });
+    }
+
+    // Apply client filter
+    if (selectedClients.length > 0) {
+      filtered = filtered.filter(booking =>
+        selectedClients.includes(booking.client_name)
+      );
+    }
+
+    // Apply service filter
+    if (selectedServices.length > 0) {
+      filtered = filtered.filter(booking =>
+        booking.services && booking.services.some(service => {
+          const serviceName = service?.name || '';
+          return selectedServices.includes(serviceName);
+        })
+      );
+    }
+
+    // Apply responsible party filter
+    if (selectedResponsibleParties.length > 0) {
+      console.log('🔍 Filtering by responsible parties:', selectedResponsibleParties);
+      filtered = filtered.filter(booking =>
+        booking.services && booking.services.some(service => {
+          // First try to find by service-responsible mapping
+          let serviceResponsibleParty = serviceResponsibleParties.find(srp =>
+            srp.service_id == service.id
+          );
+
+          // If not found and service has responsible_party_id, try global parties
+          if (!serviceResponsibleParty && service.responsible_party_id) {
+            serviceResponsibleParty = globalResponsibleParties.find(grp =>
+              grp.id == service.responsible_party_id
+            );
+          }
+
+          // If still not found, try to match by service name from global parties (for legacy data)
+          if (!serviceResponsibleParty) {
+            serviceResponsibleParty = globalResponsibleParties.find(grp =>
+              grp.name && service.name && service.name.toLowerCase().includes(grp.name.toLowerCase())
+            );
+          }
+
+          const serviceResponsibleName = serviceResponsibleParty?.name;
+
+          // Also check booking-level responsible parties
+          const bookingResponsibleNames = booking.responsible_parties?.map(rp => rp.name) || [];
+
+          // Check if any selected responsible party matches either service-level or booking-level
+          return selectedResponsibleParties.some(selectedParty =>
+            (serviceResponsibleName && serviceResponsibleName.toLowerCase().includes(selectedParty.toLowerCase())) ||
+            bookingResponsibleNames.some(bookingParty =>
+              bookingParty && bookingParty.toLowerCase().includes(selectedParty.toLowerCase())
+            )
+          );
+        })
+      );
+      console.log('📊 Bookings after responsible party filter:', filtered.length);
+    }
+
+    // Apply status filter (client-side) for multi-select statuses
+    if (selectedStatuses.length > 0) {
+      filtered = filtered.filter(booking => selectedStatuses.includes(booking.status));
+    }
+
+    // Apply payment status filter (client-side) for multi-select payment statuses
+    if (selectedPaymentStatuses.length > 0) {
+      filtered = filtered.filter(booking => selectedPaymentStatuses.includes(booking.payment_status));
+    }
+
+    // Apply search query filter for responsible parties
+    if (searchQuery && searchQuery.trim()) {
+      const trimmedQuery = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(booking => {
+        // Check booking-level responsible parties
+        const hasBookingResponsible = booking.responsible_parties?.some(party =>
+          party.name.toLowerCase().includes(trimmedQuery)
+        );
+
+        // Check service-level responsible parties
+        const hasServiceResponsible = booking.services?.some(service => {
+          let serviceResponsibleParty = null;
+
+          // First priority: use service.responsible_party_id from booking data
+          if (service.responsible_party_id) {
+            serviceResponsibleParty = globalResponsibleParties.find(grp =>
+              Number(grp.id) === Number(service.responsible_party_id)
+            );
+          }
+
+          // Second priority: try to find by service-responsible mapping
+          if (!serviceResponsibleParty && service.id) {
+            serviceResponsibleParty = serviceResponsibleParties.find(srp =>
+              Number(srp.service_id) === Number(service.id)
+            );
+          }
+
+          // Third priority: try to match by service name from global parties (for legacy data)
+          if (!serviceResponsibleParty && service.name) {
+            serviceResponsibleParty = globalResponsibleParties.find(grp =>
+              grp.name && service.name.toLowerCase().includes(grp.name.toLowerCase())
+            );
+          }
+
+          const serviceResponsibleName = serviceResponsibleParty?.name;
+
+          return serviceResponsibleName && serviceResponsibleName.toLowerCase().includes(trimmedQuery);
+        });
+
+        return hasBookingResponsible || hasServiceResponsible;
+      });
+    }
+
+    return filtered;
+  }, [bookings, selectedMonths, selectedYears, selectedClients, selectedServices, selectedResponsibleParties, selectedStatuses, selectedPaymentStatuses, serviceResponsibleParties, globalResponsibleParties, searchQuery]);
   
   // Modern multi-criteria sorting
   const sortedBookings = filteredBookings.sort((a, b) => {
@@ -759,11 +999,30 @@ const UserDashboard = () => {
         }
         
         case 'service': {
-          const serviceA = a.services?.[0] || '';
-          const serviceB = b.services?.[0] || '';
+          const serviceA = (a.services?.[0]?.name || a.services?.[0] || '').toString();
+          const serviceB = (b.services?.[0]?.name || b.services?.[0] || '').toString();
           result = criteria.order === 'asc'
             ? serviceA.localeCompare(serviceB)
             : serviceB.localeCompare(serviceA);
+          break;
+        }
+        
+        case 'responsible': {
+          // Find responsible party for first service of each booking
+          const getResponsibleName = (booking) => {
+            if (!booking.services || booking.services.length === 0) return '';
+            const service = booking.services[0];
+            const serviceResponsibleParty = serviceResponsibleParties.find(srp => 
+              srp.service_id === service.id
+            );
+            return serviceResponsibleParty?.name || '';
+          };
+          
+          const responsibleA = getResponsibleName(a);
+          const responsibleB = getResponsibleName(b);
+          result = criteria.order === 'asc'
+            ? responsibleA.localeCompare(responsibleB)
+            : responsibleB.localeCompare(responsibleA);
           break;
         }
       }
@@ -778,75 +1037,75 @@ const UserDashboard = () => {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Status Booking Section */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Status Booking</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <h2 className="text-xs sm:text-sm font-semibold text-gray-900 mb-2">Status Booking</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2">
           <div 
-            onClick={() => setFilterStatus('')}
-            className={`bg-white rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-              filterStatus === '' ? 'border-2 border-blue-500 ring-2 ring-blue-100' : 'border border-gray-200'
+            onClick={() => setSelectedStatuses([])}
+            className={`bg-white rounded-lg p-1.5 sm:p-2 hover:shadow-md transition-all cursor-pointer ${
+              selectedStatuses.length === 0 ? 'border-2 border-blue-500 ring-2 ring-blue-100' : 'border border-gray-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Booking</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalBooking}</p>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-100 rounded-lg flex items-center justify-center mb-2">
+                <FiCalendar className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
               </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <FiCalendar className="w-6 h-6 text-blue-600" />
+              <div>
+                <p className="text-xs text-gray-600 mb-0.5">Total Booking</p>
+                <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalBooking}</p>
               </div>
             </div>
           </div>
           
           <div 
             onClick={() => handleStatusCardClick('Dijadwalkan')}
-            className={`bg-white rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-              filterStatus === 'Dijadwalkan' ? 'border-2 border-blue-500 ring-2 ring-blue-100' : 'border border-gray-200'
+            className={`bg-white rounded-lg p-1.5 sm:p-2 hover:shadow-md transition-all cursor-pointer ${
+              selectedStatuses.includes('Dijadwalkan') ? 'border-2 border-blue-500 ring-2 ring-blue-100' : 'border border-gray-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Dijadwalkan</p>
-                <p className="text-3xl font-bold text-blue-600">{stats.scheduled}</p>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-100 rounded-lg flex items-center justify-center mb-2">
+                <FiAlertCircle className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
               </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <FiAlertCircle className="w-6 h-6 text-blue-600" />
+              <div>
+                <p className="text-xs text-gray-600 mb-0.5">Dijadwalkan</p>
+                <p className="text-lg sm:text-xl font-bold text-blue-600">{stats.scheduled}</p>
               </div>
             </div>
           </div>
           
           <div 
             onClick={() => handleStatusCardClick('Selesai')}
-            className={`bg-white rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-              filterStatus === 'Selesai' ? 'border-2 border-green-500 ring-2 ring-green-100' : 'border border-gray-200'
+            className={`bg-white rounded-lg p-1.5 sm:p-2 hover:shadow-md transition-all cursor-pointer ${
+              selectedStatuses.includes('Selesai') ? 'border-2 border-green-500 ring-2 ring-green-100' : 'border border-gray-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Selesai</p>
-                <p className="text-3xl font-bold text-green-600">{stats.completed}</p>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-green-100 rounded-lg flex items-center justify-center mb-2">
+                <FiCheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
               </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <FiCheckCircle className="w-6 h-6 text-green-600" />
+              <div>
+                <p className="text-xs text-gray-600 mb-0.5">Selesai</p>
+                <p className="text-lg sm:text-xl font-bold text-green-600">{stats.completed}</p>
               </div>
             </div>
           </div>
           
           <div 
             onClick={() => handleStatusCardClick('Dibatalkan')}
-            className={`bg-white rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-              filterStatus === 'Dibatalkan' ? 'border-2 border-red-500 ring-2 ring-red-100' : 'border border-gray-200'
+            className={`bg-white rounded-lg p-1.5 sm:p-2 hover:shadow-md transition-all cursor-pointer ${
+              selectedStatuses.includes('Dibatalkan') ? 'border-2 border-red-500 ring-2 ring-red-100' : 'border border-gray-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Dibatalkan</p>
-                <p className="text-3xl font-bold text-red-600">{stats.cancelled}</p>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-red-100 rounded-lg flex items-center justify-center mb-2">
+                <FiXCircle className="w-3 h-3 sm:w-4 sm:h-4 text-red-600" />
               </div>
-              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                <FiXCircle className="w-6 h-6 text-red-600" />
+              <div>
+                <p className="text-xs text-gray-600 mb-0.5">Dibatalkan</p>
+                <p className="text-lg sm:text-xl font-bold text-red-600">{stats.cancelled}</p>
               </div>
             </div>
           </div>
@@ -855,55 +1114,55 @@ const UserDashboard = () => {
 
       {/* Status Pembayaran Section */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Status Pembayaran</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <h2 className="text-xs sm:text-sm font-semibold text-gray-900 mb-2">Status Pembayaran</h2>
+        <div className="grid grid-cols-3 gap-1">
           <div 
             onClick={() => handlePaymentCardClick('Belum Bayar')}
-            className={`bg-white rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-              filterPaymentStatus === 'Belum Bayar' ? 'border-2 border-yellow-500 ring-2 ring-yellow-100' : 'border border-gray-200'
+            className={`bg-white rounded-lg p-1 hover:shadow-md transition-all cursor-pointer ${
+              selectedPaymentStatuses.includes('Belum Bayar') ? 'border-2 border-yellow-500 ring-2 ring-yellow-100' : 'border border-gray-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Belum Bayar</p>
-                <p className="text-3xl font-bold text-yellow-600">{stats.unpaid}</p>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-4 h-4 sm:w-6 sm:h-6 bg-yellow-100 rounded-lg flex items-center justify-center mb-1">
+                <FiDollarSign className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 text-yellow-600" />
               </div>
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <FiDollarSign className="w-6 h-6 text-yellow-600" />
+              <div>
+                <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5">Belum Bayar</p>
+                <p className="text-sm sm:text-lg font-bold text-yellow-600">{stats.unpaid}</p>
               </div>
             </div>
           </div>
           
           <div 
             onClick={() => handlePaymentCardClick('DP')}
-            className={`bg-white rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-              filterPaymentStatus === 'DP' ? 'border-2 border-orange-500 ring-2 ring-orange-100' : 'border border-gray-200'
+            className={`bg-white rounded-lg p-1 hover:shadow-md transition-all cursor-pointer ${
+              selectedPaymentStatuses.includes('DP') ? 'border-2 border-orange-500 ring-2 ring-orange-100' : 'border border-gray-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Down Payment (DP)</p>
-                <p className="text-3xl font-bold text-orange-600">{stats.downPayment}</p>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-4 h-4 sm:w-6 sm:h-6 bg-orange-100 rounded-lg flex items-center justify-center mb-1">
+                <FiCreditCard className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 text-orange-600" />
               </div>
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                <FiCreditCard className="w-6 h-6 text-orange-600" />
+              <div>
+                <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5">Down Payment</p>
+                <p className="text-sm sm:text-lg font-bold text-orange-600">{stats.downPayment}</p>
               </div>
             </div>
           </div>
           
           <div 
             onClick={() => handlePaymentCardClick('Lunas')}
-            className={`bg-white rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-              filterPaymentStatus === 'Lunas' ? 'border-2 border-green-500 ring-2 ring-green-100' : 'border border-gray-200'
+            className={`bg-white rounded-lg p-1 hover:shadow-md transition-all cursor-pointer ${
+              selectedPaymentStatuses.includes('Lunas') ? 'border-2 border-green-500 ring-2 ring-green-100' : 'border border-gray-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Lunas</p>
-                <p className="text-3xl font-bold text-green-600">{stats.paid}</p>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-4 h-4 sm:w-6 sm:h-6 bg-green-100 rounded-lg flex items-center justify-center mb-1">
+                <FiCheckCircle className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 text-green-600" />
               </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <FiCheckCircle className="w-6 h-6 text-green-600" />
+              <div>
+                <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5">Lunas</p>
+                <p className="text-sm sm:text-lg font-bold text-green-600">{stats.paid}</p>
               </div>
             </div>
           </div>
@@ -911,10 +1170,10 @@ const UserDashboard = () => {
       </div>
 
       {/* Filters & Actions */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+      <div className="bg-white rounded-lg border border-gray-200 p-2 sm:p-3 space-y-1.5 sm:space-y-2">
         {/* Row 1: Search Bar (Center) */}
         <div className="flex justify-center">
-          <div className="w-full max-w-2xl">
+          <div className="w-full max-w-2xl px-2 sm:px-0">
             <SearchInput
               value={searchQuery}
               onChange={handleSearch}
@@ -924,57 +1183,62 @@ const UserDashboard = () => {
         </div>
 
         {/* Row 2: View Toggle and Add Button */}
-        <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
-          {/* Left: View Toggle */}
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setViewMode('table')}
-              className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-medium ${
-                viewMode === 'table' 
-                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <FiFilter size={16} />
-              <span>Tabel</span>
-            </button>
-            <button 
-              onClick={() => setViewMode('calendar')}
-              className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-medium ${
-                viewMode === 'calendar' 
-                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <FiCalendar size={16} />
-              <span>Kalender</span>
-            </button>
-          </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center justify-center w-full">
+          {/* View Toggle and Add Button Container */}
+          <div className="flex items-center justify-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg flex items-center gap-1 transition-colors text-xs font-medium ${
+                  viewMode === 'table'
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <FiFilter size={12} />
+                <span className="hidden sm:inline">Tabel</span>
+              </button>
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg flex items-center gap-1 transition-colors text-xs font-medium ${
+                  viewMode === 'calendar'
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <FiCalendar size={12} />
+                <span className="hidden sm:inline">Kalender</span>
+              </button>
+            </div>
 
-          {/* Right: Add Button */}
-          <Button
-            variant="primary"
-            icon={<FiPlus />}
-            onClick={() => setShowAddModal(true)}
-          >
-            Tambah Booking
-          </Button>
+            {/* Add Button */}
+            <Button
+              variant="primary"
+              icon={<FiPlus />}
+              onClick={() => setShowAddModal(true)}
+              className="text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg justify-center sm:justify-start"
+            >
+              <span className="hidden sm:inline">Tambah Booking</span>
+              <span className="sm:hidden">Tambah</span>
+            </Button>
+          </div>
         </div>
 
         {/* Row 3: Modern Sort Chips - CENTER ALIGNED */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-center">
+        <div className="space-y-3 sm:space-y-4 w-full">
+          <div className="flex items-center justify-center w-full">
             <button
               onClick={resetSortCriteria}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors"
+              className="text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 sm:gap-1.5 transition-colors px-2 sm:px-3 py-1.5 sm:py-2 rounded-md sm:rounded-lg hover:bg-blue-50"
             >
-              <FiRefreshCw size={12} />
-              Reset Semua Filter
+              <FiRefreshCw size={12} className="sm:w-3 sm:h-3" />
+              <span className="hidden sm:inline">Reset Semua Filter</span>
+              <span className="sm:hidden">Reset</span>
             </button>
           </div>
 
           {/* Sort Options Chips - CENTER ALIGNED */}
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="flex flex-wrap justify-center items-center gap-3 sm:gap-4 md:gap-5 lg:gap-6 w-full max-w-full">
             {/* Date Sort with Sub-Options */}
             <div className="relative">
               <button
@@ -983,27 +1247,29 @@ const UserDashboard = () => {
                   setShowDateOptions(!showDateOptions);
                   setShowClientOptions(false);
                   setShowServiceOptions(false);
+                  setShowResponsibleOptions(false);
                 }}
-                className={`group px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium transition-all ${
+                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
                   sortCriteria.find(c => c.id === 'date')
                     ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
                 }`}
               >
-                <FiCalendar size={14} />
-                <span>Tanggal</span>
+                <FiCalendar size={12} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Tanggal</span>
+                <span className="sm:hidden">📅</span>
                 {sortCriteria.find(c => c.id === 'date') && (
                   <>
                     {sortCriteria.find(c => c.id === 'date')?.order === 'desc' ? (
-                      <FiArrowDown size={12} />
+                      <FiArrowDown size={12} className="sm:w-3 sm:h-3" />
                     ) : (
-                      <FiArrowUp size={12} />
+                      <FiArrowUp size={12} className="sm:w-3 sm:h-3" />
                     )}
                     <span
                       onClick={(e) => { e.stopPropagation(); removeSortCriteria('date'); setShowDateOptions(false); }}
                       className="ml-1 hover:bg-blue-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
                     >
-                      <FiX size={12} />
+                      <FiX size={12} className="sm:w-3 sm:h-3" />
                     </span>
                   </>
                 )}
@@ -1011,34 +1277,35 @@ const UserDashboard = () => {
               
               {/* Date Sub-Options Dropdown */}
               {showDateOptions && (
-                <div className="absolute top-full left-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-50 w-80">
+                <div className="absolute top-full left-1/2 transform -translate-x-1/3 sm:left-0 sm:transform-none mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-3 md:p-4 z-50 w-[65vw] sm:w-72 md:w-80 lg:w-96 max-w-[calc(100vw-2rem)] sm:max-w-none max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
                   {/* Header with Close Button */}
-                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
-                    <h4 className="text-sm font-semibold text-gray-800">Filter Tanggal</h4>
+                  <div className="flex items-center justify-between mb-2 sm:mb-3 pb-2 border-b border-gray-200">
+                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Tanggal</h4>
                     <button
                       onClick={() => setShowDateOptions(false)}
                       className="p-1 hover:bg-gray-100 rounded-full transition-colors"
                       title="Tutup"
                     >
-                      <FiX size={16} className="text-gray-500" />
+                      <FiX size={14} className="sm:w-4 sm:h-4 text-gray-500" />
                     </button>
                   </div>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-2 sm:space-y-3 overflow-y-auto max-h-32 sm:max-h-40 md:max-h-48">
                     <div>
                       <p className="text-xs font-semibold text-gray-700 mb-2">Pilih Bulan:</p>
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 sm:gap-2">
                         {availableMonths.map((month) => (
                           <button
                             key={month.value}
                             onClick={() => toggleMonth(month.value)}
-                            className={`px-2 py-1 text-xs rounded transition-colors ${
+                            className={`px-1 sm:px-2 py-1 text-xs rounded transition-colors ${
                               selectedMonths.includes(month.value)
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                           >
-                            {month.label.substring(0, 3)}
+                            <span className="hidden sm:inline">{month.label.substring(0, 3)}</span>
+                            <span className="sm:hidden">{month.label.substring(0, 3)}</span>
                           </button>
                         ))}
                       </div>
@@ -1046,12 +1313,12 @@ const UserDashboard = () => {
                     
                     <div>
                       <p className="text-xs font-semibold text-gray-700 mb-2">Pilih Tahun:</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1 sm:gap-2">
                         {availableYears.map((year) => (
                           <button
                             key={year.value}
                             onClick={() => toggleYear(year.value)}
-                            className={`px-3 py-1 text-xs rounded transition-colors ${
+                            className={`px-2 sm:px-3 py-1 text-xs rounded transition-colors ${
                               selectedYears.includes(year.value)
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1075,27 +1342,29 @@ const UserDashboard = () => {
                   setShowClientOptions(!showClientOptions);
                   setShowDateOptions(false);
                   setShowServiceOptions(false);
+                  setShowResponsibleOptions(false);
                 }}
-                className={`group px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium transition-all ${
+                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
                   sortCriteria.find(c => c.id === 'client')
                     ? 'bg-purple-600 text-white shadow-md hover:bg-purple-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
                 }`}
               >
-                <FiUser size={14} />
-                <span>Nama Klien</span>
+                <FiUser size={12} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Nama Klien</span>
+                <span className="sm:hidden">👤</span>
                 {sortCriteria.find(c => c.id === 'client') && (
                   <>
                     {sortCriteria.find(c => c.id === 'client')?.order === 'asc' ? (
-                      <span className="text-xs">A→Z</span>
+                      <span className="text-xs sm:text-xs">A→Z</span>
                     ) : (
-                      <span className="text-xs">Z→A</span>
+                      <span className="text-xs sm:text-xs">Z→A</span>
                     )}
                     <span
                       onClick={(e) => { e.stopPropagation(); removeSortCriteria('client'); setShowClientOptions(false); }}
                       className="ml-1 hover:bg-purple-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
                     >
-                      <FiX size={12} />
+                      <FiX size={12} className="sm:w-3 sm:h-3" />
                     </span>
                   </>
                 )}
@@ -1103,34 +1372,34 @@ const UserDashboard = () => {
               
               {/* Client Sub-Options Dropdown */}
               {showClientOptions && (
-                <div className="absolute top-full left-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-50 w-64">
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-3 md:p-4 z-50 w-[65vw] sm:w-64 md:w-72 lg:w-80 max-w-[calc(100vw-2rem)] max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
                   {/* Header with Close Button */}
-                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
-                    <h4 className="text-sm font-semibold text-gray-800">Filter Klien</h4>
+                  <div className="flex items-center justify-between mb-1.5 sm:mb-2 md:mb-3 pb-1.5 sm:pb-2 border-b border-gray-200">
+                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Klien</h4>
                     <button
                       onClick={() => setShowClientOptions(false)}
-                      className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                      className="p-0.5 sm:p-1 hover:bg-gray-100 rounded-full transition-colors"
                       title="Tutup"
                     >
-                      <FiX size={16} className="text-gray-500" />
+                      <FiX size={12} className="sm:w-4 sm:h-4 text-gray-500" />
                     </button>
                   </div>
                   
                   {/* Search Box */}
-                  <div className="mb-2 relative">
-                    <FiSearch className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={12} />
+                  <div className="mb-1.5 sm:mb-2 relative">
+                    <FiSearch className="absolute left-1.5 sm:left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={10} />
                     <input
                       type="text"
                       value={clientSearchQuery}
                       onChange={(e) => setClientSearchQuery(e.target.value)}
                       placeholder="Cari nama klien..."
-                      className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full pl-6 sm:pl-7 pr-2 sm:pr-3 py-1 sm:py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                   
                   {/* Client List with Scroll */}
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                  <div className="space-y-0.5 sm:space-y-1 max-h-24 sm:max-h-32 md:max-h-40 lg:max-h-48 overflow-y-auto">
                     {availableClients
                       .filter(client => 
                         client.name.toLowerCase().includes(clientSearchQuery.toLowerCase())
@@ -1139,13 +1408,13 @@ const UserDashboard = () => {
                         <button
                           key={client.name}
                           onClick={() => toggleClient(client.name)}
-                          className={`w-full px-3 py-2 text-left text-xs rounded transition-colors ${
+                          className={`w-full px-1 sm:px-2 md:px-3 py-1 sm:py-1.5 md:py-2 text-left text-xs sm:text-xs md:text-sm rounded transition-colors whitespace-normal break-words leading-tight min-h-[2rem] sm:min-h-[2.5rem] flex items-center ${
                             selectedClients.includes(client.name)
                               ? 'bg-purple-600 text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          {client.name}
+                          <span className="truncate">{client.name}</span>
                         </button>
                       ))}
                     {availableClients.filter(client => 
@@ -1168,27 +1437,29 @@ const UserDashboard = () => {
                   setShowServiceOptions(!showServiceOptions);
                   setShowDateOptions(false);
                   setShowClientOptions(false);
+                  setShowResponsibleOptions(false);
                 }}
-                className={`group px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium transition-all ${
+                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
                   sortCriteria.find(c => c.id === 'service')
                     ? 'bg-green-600 text-white shadow-md hover:bg-green-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
                 }`}
               >
-                <FiPackage size={14} />
-                <span>Layanan</span>
+                <FiPackage size={12} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Layanan</span>
+                <span className="sm:hidden">📦</span>
                 {sortCriteria.find(c => c.id === 'service') && (
                   <>
                     {sortCriteria.find(c => c.id === 'service')?.order === 'asc' ? (
-                      <span className="text-xs">A→Z</span>
+                      <span className="text-xs sm:text-xs">A→Z</span>
                     ) : (
-                      <span className="text-xs">Z→A</span>
+                      <span className="text-xs sm:text-xs">Z→A</span>
                     )}
                     <span
                       onClick={(e) => { e.stopPropagation(); removeSortCriteria('service'); setShowServiceOptions(false); }}
                       className="ml-1 hover:bg-green-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
                     >
-                      <FiX size={12} />
+                      <FiX size={12} className="sm:w-3 sm:h-3" />
                     </span>
                   </>
                 )}
@@ -1196,16 +1467,16 @@ const UserDashboard = () => {
               
               {/* Service Sub-Options Dropdown */}
               {showServiceOptions && (
-                <div className="absolute top-full left-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-50 w-64">
+                <div className="absolute top-full left-3/4 transform -translate-x-3/4 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-4 z-50 w-[65vw] sm:w-64 md:w-72 lg:w-80 max-w-[calc(100vw-2rem)] max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
                   {/* Header with Close Button */}
-                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
-                    <h4 className="text-sm font-semibold text-gray-800">Filter Layanan</h4>
+                  <div className="flex items-center justify-between mb-2 sm:mb-3 pb-2 border-b border-gray-200">
+                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Layanan</h4>
                     <button
                       onClick={() => setShowServiceOptions(false)}
                       className="p-1 hover:bg-gray-100 rounded-full transition-colors"
                       title="Tutup"
                     >
-                      <FiX size={16} className="text-gray-500" />
+                      <FiX size={14} className="sm:w-4 sm:h-4 text-gray-500" />
                     </button>
                   </div>
                   
@@ -1223,7 +1494,7 @@ const UserDashboard = () => {
                   </div>
                   
                   {/* Service List with Scroll */}
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                  <div className="space-y-1 max-h-32 sm:max-h-40 md:max-h-48 overflow-y-auto">
                     {availableServices
                       .filter(service => 
                         service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase())
@@ -1232,7 +1503,7 @@ const UserDashboard = () => {
                         <button
                           key={service.name}
                           onClick={() => toggleService(service.name)}
-                          className={`w-full px-3 py-2 text-left text-xs rounded transition-colors ${
+                          className={`w-full px-1 sm:px-3 py-1 sm:py-2 text-left text-xs sm:text-xs rounded transition-colors whitespace-normal break-words leading-tight ${
                             selectedServices.includes(service.name)
                               ? 'bg-green-600 text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1252,13 +1523,113 @@ const UserDashboard = () => {
                 </div>
               )}
             </div>
+
+            {/* Responsible Party Filter */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  toggleSortCriteria('responsible');
+                  setShowResponsibleOptions(!showResponsibleOptions);
+                  setShowDateOptions(false);
+                  setShowClientOptions(false);
+                  setShowServiceOptions(false);
+                }}
+                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
+                  sortCriteria.find(c => c.id === 'responsible')
+                    ? 'bg-orange-600 text-white shadow-md hover:bg-orange-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+                }`}
+              >
+                <FiUser size={12} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Penanggung Jawab</span>
+                <span className="sm:hidden">👨‍💼</span>
+                {sortCriteria.find(c => c.id === 'responsible') && (
+                  <>
+                    {sortCriteria.find(c => c.id === 'responsible')?.order === 'asc' ? (
+                      <span className="text-xs sm:text-xs">A→Z</span>
+                    ) : (
+                      <span className="text-xs sm:text-xs">Z→A</span>
+                    )}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); removeSortCriteria('responsible'); setShowResponsibleOptions(false); }}
+                      className="ml-1 hover:bg-orange-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
+                    >
+                      <FiX size={12} className="sm:w-3 sm:h-3" />
+                    </span>
+                  </>
+                )}
+                {selectedResponsibleParties.length > 0 && !sortCriteria.find(c => c.id === 'responsible') && (
+                  <span className="ml-1 bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                    {selectedResponsibleParties.length}
+                  </span>
+                )}
+              </button>
+              
+              {/* Responsible Party Dropdown */}
+              {showResponsibleOptions && (
+                <div className="absolute top-full left-3/4 transform -translate-x-3/4 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-3 md:p-4 z-50 w-48 sm:w-52 md:w-56 max-w-[calc(100vw-2rem)] max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
+                  {/* Header with Close Button */}
+                  <div className="flex items-center justify-between mb-1.5 sm:mb-2 md:mb-3 pb-1.5 sm:pb-2 border-b border-gray-200">
+                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Penanggung Jawab</h4>
+                    <button
+                      onClick={() => setShowResponsibleOptions(false)}
+                      className="p-0.5 sm:p-1 hover:bg-gray-100 rounded-full transition-colors"
+                      title="Tutup"
+                    >
+                      <FiX size={12} className="sm:w-4 sm:h-4 text-gray-500" />
+                    </button>
+                  </div>
+                  
+                  {/* Search Box */}
+                  <div className="mb-1.5 sm:mb-2 relative">
+                    <FiSearch className="absolute left-1.5 sm:left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={10} />
+                    <input
+                      type="text"
+                      value={responsibleSearchQuery}
+                      onChange={(e) => setResponsibleSearchQuery(e.target.value)}
+                      placeholder="Cari nama penanggung jawab..."
+                      className="w-full pl-6 sm:pl-7 pr-2 sm:pr-3 py-1 sm:py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  
+                  {/* Responsible Party List with Scroll */}
+                  <div className="space-y-0.5 sm:space-y-1 max-h-24 sm:max-h-32 md:max-h-40 lg:max-h-48 overflow-y-auto">
+                    {globalResponsibleParties
+                      .filter(party => 
+                        party.name.toLowerCase().includes(responsibleSearchQuery.toLowerCase())
+                      )
+                      .map((party) => (
+                        <button
+                          key={party.id}
+                          onClick={() => toggleResponsible(party.name)}
+                          className={`w-full px-1 sm:px-2 md:px-3 py-1 sm:py-1.5 md:py-2 text-left text-xs sm:text-xs md:text-sm rounded transition-colors whitespace-normal break-words leading-tight min-h-[2rem] sm:min-h-[2.5rem] flex items-center ${
+                            selectedResponsibleParties.includes(party.name)
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          <span className="truncate">{party.name}</span>
+                        </button>
+                      ))}
+                    {globalResponsibleParties.filter(party => 
+                      party.name.toLowerCase().includes(responsibleSearchQuery.toLowerCase())
+                    ).length === 0 && (
+                      <div className="text-xs text-gray-500 text-center py-2">
+                        Tidak ditemukan penanggung jawab "{responsibleSearchQuery}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Active Sort Info - CENTER ALIGNED */}
           {sortCriteria.length > 0 && (
-            <div className="text-xs text-gray-600 flex items-center justify-center gap-2 pt-1">
+            <div className="text-xs sm:text-sm text-gray-600 flex items-center justify-center gap-2 pt-1 px-2 sm:px-0">
               <span className="font-medium">Urutan:</span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 flex-wrap justify-center">
                 {sortCriteria.map((c, idx) => (
                   <span key={c.id} className="inline-flex items-center gap-1">
                     {idx > 0 && <span className="text-gray-400">→</span>}
@@ -1266,6 +1637,7 @@ const UserDashboard = () => {
                       {c.id === 'date' && 'Tanggal'}
                       {c.id === 'client' && 'Klien'}
                       {c.id === 'service' && 'Layanan'}
+                      {c.id === 'responsible' && 'Penanggung Jawab'}
                     </span>
                   </span>
                 ))}
@@ -1275,9 +1647,9 @@ const UserDashboard = () => {
           
           {/* Active Sub-Filters Info */}
           {(selectedMonths.length > 0 || selectedYears.length > 0 || selectedClients.length > 0 || selectedServices.length > 0) && (
-            <div className="text-xs text-blue-700 flex items-center justify-center gap-2 pt-1 bg-blue-50 px-3 py-2 rounded-lg">
-              <FiFilter size={12} />
-              <span className="font-medium">
+            <div className="text-xs sm:text-sm text-blue-700 flex items-center justify-center gap-2 pt-1 bg-blue-50 px-3 sm:px-3 py-2 rounded-lg mx-2 sm:mx-0">
+              <FiFilter size={12} className="sm:w-4 sm:h-4" />
+              <span className="font-medium text-center">
                 Filter Aktif: 
                 {selectedMonths.length > 0 && ` ${selectedMonths.length} Bulan`}
                 {selectedYears.length > 0 && ` ${selectedYears.length} Tahun`}
@@ -1289,22 +1661,32 @@ const UserDashboard = () => {
         </div>
 
         {/* Row 4: Active Status Filters */}
-        {(filterStatus || filterPaymentStatus) && (
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200">
-            <span className="text-xs font-semibold text-gray-600">Filter Aktif:</span>
-            {filterStatus && (
-              <div className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm">
-                <FiFilter size={14} className="text-blue-600" />
-                <span className="text-blue-700">Status: <span className="font-medium">{filterStatus}</span></span>
-              </div>
-            )}
-            
-            {filterPaymentStatus && (
-              <div className="px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-lg flex items-center gap-2 text-sm">
-                <FiDollarSign size={14} className="text-orange-600" />
-                <span className="text-orange-700">Pembayaran: <span className="font-medium">{filterPaymentStatus}</span></span>
-              </div>
-            )}
+        {(selectedStatuses.length > 0 || selectedPaymentStatuses.length > 0) && (
+          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-2 pt-2 border-t border-gray-200">
+            <span className="text-xs sm:text-sm font-semibold text-gray-600">Filter Aktif:</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedStatuses.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <FiFilter size={14} className="text-blue-600" />
+                  {selectedStatuses.map(s => (
+                    <div key={s} className="px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                      <span className="font-medium">{s}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {selectedPaymentStatuses.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <FiDollarSign size={14} className="text-orange-600" />
+                  {selectedPaymentStatuses.map(s => (
+                    <div key={s} className="px-2 py-1 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
+                      <span className="font-medium">{s}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1318,12 +1700,12 @@ const UserDashboard = () => {
           onGenerateInvoice={handleGenerateInvoice}
         />
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
           {/* Search Result Info */}
           {searchQuery && (
-            <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+            <div className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="text-sm text-blue-800">
+                <div className="text-xs sm:text-sm text-blue-800">
                   <span className="font-medium">Hasil pencarian:</span>{' '}
                   <span className="font-semibold">"{searchQuery}"</span>
                   {' '}— Ditemukan <span className="font-bold">{sortedBookings.length}</span> booking
@@ -1331,147 +1713,230 @@ const UserDashboard = () => {
               </div>
               <button
                 onClick={() => setSearchQuery('')}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
               >
                 Hapus pencarian
               </button>
             </div>
           )}
           
-          <div className="overflow-x-auto">
-            <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Klien
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Layanan
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tanggal, Waktu, Tempat
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Pembayaran
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Aksi
-                </th>
-              </tr>
-            </thead>
+          <div className="overflow-x-auto -mx-2 sm:mx-0 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+            <div className="inline-block w-full align-middle">
+              <table className="w-full text-xs" style={{ minWidth: '700px' }}>
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Klien
+                  </th>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Layanan
+                  </th>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Penanggung Jawab Booking
+                  </th>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tanggal, Waktu, Tempat
+                  </th>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pembayaran
+                  </th>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Aksi
+                  </th>
+                </tr>
+              </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="7" className="px-2 sm:px-4 py-3 sm:py-4 text-center text-gray-500">
                     <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-blue-600"></div>
                     </div>
                   </td>
                 </tr>
               ) : sortedBookings.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="7" className="px-2 sm:px-4 py-3 sm:py-4 text-center text-gray-500">
                     {searchQuery ? (
-                      <div className="flex flex-col items-center gap-2">
-                        <p className="font-medium">Tidak ada hasil untuk "{searchQuery}"</p>
-                        <p className="text-sm">Coba cari dengan nama klien, nomor kontak, atau layanan lainnya</p>
+                      <div className="flex flex-col items-center gap-1">
+                        <p className="font-medium text-xs sm:text-sm">Tidak ada hasil untuk "{searchQuery}"</p>
+                        <p className="text-xs">Coba cari dengan nama klien, nomor kontak, atau layanan lainnya</p>
                       </div>
-                    ) : filterStatus || filterPaymentStatus ? (
-                      'Tidak ada booking dengan filter yang dipilih'
+                    ) : (selectedStatuses.length > 0) || (selectedPaymentStatuses.length > 0) ? (
+                      <p className="text-xs sm:text-sm">Tidak ada booking dengan filter yang dipilih</p>
                     ) : (
-                      'Tidak ada data booking'
+                      <p className="text-xs sm:text-sm">Tidak ada data booking</p>
                     )}
                   </td>
                 </tr>
               ) : (
                 sortedBookings.map((booking) => (
                   <tr key={booking.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-xs font-medium text-gray-900">
                           {searchQuery ? highlightText(booking.client_name, searchQuery) : booking.client_name}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-xs text-gray-500">
                           {searchQuery ? highlightText(booking.contact, searchQuery) : booking.contact}
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-900 space-y-1">
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
+                      <div className="text-xs text-gray-900 space-y-0.5">
                         {booking.services && booking.services.length > 0 ? (
                           booking.services
                             .filter(service => service) // Filter out null/undefined
                             .map((service, idx) => {
+                              // Find responsible party for this service using the same logic as filtering
+                              let responsibleParty = null;
+                              
+                              // First try to find by service-responsible mapping
+                              if (service.id) {
+                                responsibleParty = serviceResponsibleParties.find(srp =>
+                                  Number(srp.service_id) === Number(service.id)
+                                );
+                              }
+                              
+                              // If not found and service has responsible_party_id, try global parties
+                              if (!responsibleParty && service.responsible_party_id) {
+                                responsibleParty = globalResponsibleParties.find(grp =>
+                                  Number(grp.id) === Number(service.responsible_party_id)
+                                );
+                              }
+                              
+                              // If still not found, try to match by service name from global parties (for legacy data)
+                              if (!responsibleParty && service.name) {
+                                responsibleParty = globalResponsibleParties.find(grp =>
+                                  grp.name && service.name.toLowerCase().includes(grp.name.toLowerCase())
+                                );
+                              }
+                              
                               const serviceName = typeof service === 'string' 
                                 ? service 
                                 : (service?.name || String(service || '-'));
+                              
                               return (
-                                <div key={idx} className="flex items-start gap-1">
-                                  <span className="text-gray-400">•</span>
-                                  <span>
-                                    {searchQuery ? highlightText(serviceName, searchQuery) : serviceName}
-                                  </span>
+                                <div key={idx} className="text-xs">
+                                  <div className="flex items-start gap-1">
+                                    <span className="text-gray-400 text-xs">•</span>
+                                    <span className="text-xs">
+                                      {searchQuery ? highlightText(serviceName, searchQuery) : serviceName}{service.quantity && service.quantity > 1 ? ` (${service.quantity}x)` : ''}
+                                    </span>
+                                  </div>
+                                  {responsibleParty ? (
+                                    <div className="flex items-center gap-1 mt-0.5 text-xs text-gray-500 ml-3">
+                                      <FiUser className="w-2.5 h-2.5" />
+                                      <span>{responsibleParty.name}</span>
+                                      {responsibleParty.phone && (
+                                        <a
+                                          href={getWhatsAppLink(responsibleParty.phone, responsibleParty.countryCode || '62')}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-green-600 hover:text-green-700 transition-colors"
+                                          title={`WhatsApp ${responsibleParty.name}`}
+                                        >
+                                          <FiMessageCircle className="w-2.5 h-2.5" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : null}
                                 </div>
                               );
                             })
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-gray-400 text-xs">-</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-900">{format.date(booking.booking_date)}</div>
-                      <div className="text-sm text-gray-500">
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
+                      <div className="text-xs text-gray-900 space-y-0.5">
+                        {(() => {
+                          try {
+                            const notesData = booking.notes ? JSON.parse(booking.notes) : {};
+                            const responsibleParties = notesData.responsible_parties || [];
+                            return responsibleParties.length > 0 ? (
+                              responsibleParties.map((party, idx) => (
+                                <div key={idx} className="flex items-center gap-1">
+                                  <span className="text-gray-400 text-xs">•</span>
+                                  <span className="text-xs">
+                                    {party.name}
+                                  </span>
+                                  {party.phone && (
+                                    <a
+                                      href={getWhatsAppLink(party.phone)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors inline-flex items-center justify-center"
+                                      title="Hubungi via WhatsApp"
+                                    >
+                                      <FiMessageCircle size={12} className="w-3 h-3 lg:w-4 lg:h-4 xl:w-4 xl:h-4 2xl:w-5 2xl:h-5" />
+                                    </a>
+                                  )}
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            );
+                          } catch (error) {
+                            return <span className="text-gray-400 text-xs">-</span>;
+                          }
+                        })()}
+                      </div>
+                    </td>
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
+                      <div className="text-xs text-gray-900">{format.date(booking.booking_date)}</div>
+                      <div className="text-xs text-gray-500">
                         {booking.booking_time ? booking.booking_time.substring(0, 5) : '-'}
                       </div>
                       {booking.location_name && booking.location_name !== '' && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <FiMapPin className="w-3 h-3 text-blue-600" />
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <FiMapPin className="w-2.5 h-2.5 text-blue-600" />
                           <span className="text-xs text-blue-600">{booking.location_name}</span>
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
                       <Badge variant={
                         booking.status === 'Dijadwalkan' ? 'info' :
                         booking.status === 'Selesai' ? 'success' :
                         booking.status === 'Dibatalkan' ? 'danger' : 'warning'
-                      }>
+                      } className="text-xs px-1 py-0.5">
                         {booking.status}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
-                      <div>
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
+                      <div className="space-y-0.5">
                         <Badge variant={
                           booking.payment_status === 'Lunas' ? 'success' :
                           booking.payment_status === 'DP' ? 'warning' : 'danger'
-                        }>
+                        } className="text-xs px-1 py-0.5">
                           {booking.payment_status}
                         </Badge>
-                        <div className="text-sm font-medium text-gray-900 mt-1">
+                        <div className="text-xs font-medium text-gray-900">
                           Total: {format.currency(booking.total_price)}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-xs text-gray-500">
                           Dibayar: {format.currency(booking.amount_paid)}
                         </div>
                         {booking.total_price - booking.amount_paid > 0 && (
-                          <div className="text-sm text-red-600">
+                          <div className="text-xs text-red-600">
                             Sisa: {format.currency(booking.total_price - booking.amount_paid)}
                           </div>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
+                      <div className="flex items-center gap-0.5">
                         <button
                           onClick={() => handleGenerateInvoice(booking)}
-                          className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          className="p-1 text-purple-600 hover:bg-purple-50 rounded transition-colors"
                           title="Generate Invoice"
                         >
-                          <FiFileText size={16} />
+                          <FiFileText size={14} />
                         </button>
                         
                         {booking.location_map_url && booking.location_map_url !== '' && (
@@ -1479,10 +1944,10 @@ const UserDashboard = () => {
                             href={booking.location_map_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center justify-center"
+                            className="p-1 text-blue-500 hover:bg-blue-50 rounded transition-colors inline-flex items-center justify-center"
                             title="Buka Lokasi di Google Maps"
                           >
-                            <FiMapPin size={16} />
+                            <FiMapPin size={14} />
                           </a>
                         )}
                         
@@ -1490,24 +1955,24 @@ const UserDashboard = () => {
                           href={getWhatsAppLink(booking.contact)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors inline-flex items-center justify-center"
+                          className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors inline-flex items-center justify-center"
                           title="Hubungi via WhatsApp"
                         >
-                          <FiMessageCircle size={16} />
+                          <FiMessageCircle size={14} />
                         </a>
                         <button
                           onClick={() => handleEdit(booking)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                           title="Edit"
                         >
-                          <FiEdit size={16} />
+                          <FiEdit size={14} />
                         </button>
                         <button
                           onClick={() => handleDelete(booking)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
                           title="Hapus"
                         >
-                          <FiTrash2 size={16} />
+                          <FiTrash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -1515,8 +1980,9 @@ const UserDashboard = () => {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+            </table>
+            </div>
+          </div>
 
         {/* Pagination */}
         {pagination.totalPages > 1 && (

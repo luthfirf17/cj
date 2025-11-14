@@ -78,8 +78,15 @@ export const StatCard = ({
       `}
       onClick={onClick}
     >
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col items-center justify-center text-center">
+        {icon && (
+          <div className={`p-3 rounded-full ${iconBgColor} mb-3`}>
+            <div className={`text-2xl ${iconColor}`}>
+              {icon}
+            </div>
+          </div>
+        )}
+        <div className="text-center">
           <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
           <p className="text-3xl font-bold text-gray-900">{value}</p>
           {trend && (
@@ -88,13 +95,6 @@ export const StatCard = ({
             </p>
           )}
         </div>
-        {icon && (
-          <div className={`p-3 rounded-full ${iconBgColor}`}>
-            <div className={`text-2xl ${iconColor}`}>
-              {icon}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

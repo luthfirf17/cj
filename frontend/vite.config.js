@@ -23,9 +23,10 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://72.61.142.236:5000',
+        target: 'http://host.docker.internal:5001',
         changeOrigin: true,
       },
     },

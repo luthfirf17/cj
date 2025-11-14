@@ -68,25 +68,25 @@ const PinModal = ({ isOpen, onClose, onSuccess, title = 'Masukkan PIN', message 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm sm:max-w-md w-full overflow-hidden animate-fadeIn">
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 flex items-center justify-between text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-              <FiLock size={20} />
+        <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between text-white">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 rounded-lg flex items-center justify-center">
+              <FiLock size={16} className="sm:w-5 sm:h-5" />
             </div>
-            <h3 className="text-lg font-semibold">{title}</h3>
+            <h3 className="text-base sm:text-lg font-semibold">{title}</h3>
           </div>
           <button
             onClick={handleClose}
-            className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
+            className="text-white hover:bg-white/20 rounded-lg p-1.5 sm:p-2 transition-colors"
           >
-            <FiX size={20} />
+            <FiX size={18} className="sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
           <p className="text-gray-600 text-center">{message}</p>
 
           {/* PIN Input */}
@@ -95,16 +95,16 @@ const PinModal = ({ isOpen, onClose, onSuccess, title = 'Masukkan PIN', message 
               PIN Keamanan (6 Digit)
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <FiLock className="text-gray-400" size={20} />
+              <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
+                <FiLock className="text-gray-400" size={16} />
               </div>
               <input
                 type={showPin ? 'text' : 'password'}
                 value={pin}
                 onChange={handlePinChange}
-                className={`w-full pl-12 pr-12 py-4 border ${
+                className={`w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-3 sm:py-4 border ${
                   error ? 'border-red-300' : 'border-gray-300'
-                } rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-3xl tracking-widest font-mono`}
+                } rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-2xl sm:text-3xl tracking-widest font-mono`}
                 placeholder="••••••"
                 maxLength={6}
                 autoFocus
@@ -113,9 +113,9 @@ const PinModal = ({ isOpen, onClose, onSuccess, title = 'Masukkan PIN', message 
               <button
                 type="button"
                 onClick={() => setShowPin(!showPin)}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
+                className="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center text-gray-400 hover:text-gray-600"
               >
-                {showPin ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                {showPin ? <FiEyeOff size={16} /> : <FiEye size={16} />}
               </button>
             </div>
             {error && (
@@ -136,27 +136,27 @@ const PinModal = ({ isOpen, onClose, onSuccess, title = 'Masukkan PIN', message 
           </div>
 
           {/* Buttons */}
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3">
             <button
               type="button"
               onClick={handleClose}
-              className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm sm:text-base"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={loading || pin.length !== 6}
-              className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
+              className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 text-sm sm:text-base"
             >
               {loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
                   <span>Verifikasi...</span>
                 </>
               ) : (
                 <>
-                  <FiLock size={18} />
+                  <FiLock size={16} className="sm:w-[18px] sm:h-[18px]" />
                   <span>Verifikasi</span>
                 </>
               )}

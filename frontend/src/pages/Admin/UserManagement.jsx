@@ -427,7 +427,7 @@ const UserManagement = () => {
           <div className="flex items-center justify-center min-h-screen px-4">
             <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowDeleteModal(false)}></div>
             
-            <div className="relative bg-white rounded-lg max-w-md w-full p-6 z-10">
+            <div className="relative bg-white rounded-lg max-w-sm sm:max-w-md w-full p-6 z-10">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Delete</h3>
               <p className="text-sm text-gray-500 mb-6">
                 Are you sure you want to delete user <strong>{selectedUser.full_name}</strong>? This action cannot be undone.

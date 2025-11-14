@@ -381,22 +381,22 @@ const SettingsPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 sm:p-4 md:p-6">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => navigate('/user/dashboard')}
-              className="p-2 text-gray-600 hover:bg-white rounded-lg transition-colors"
+              className="p-1.5 sm:p-2 text-gray-600 hover:bg-white rounded-lg transition-colors"
             >
-              <FiArrowLeft size={24} />
+              <FiArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-700 via-slate-600 to-zinc-700 bg-clip-text text-transparent">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-slate-700 via-slate-600 to-zinc-700 bg-clip-text text-transparent">
                 Pengaturan Profil
               </h1>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                 Kelola informasi akun dan keamanan Anda
               </p>
             </div>
@@ -404,49 +404,49 @@ const SettingsPage = () => {
         </div>
 
         {/* Profile Information Card */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-            <div className="flex items-center gap-3 text-white">
-              <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <FiUser size={24} />
+        <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+            <div className="flex items-center gap-2 sm:gap-3 text-white">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                <FiUser className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Informasi Profil</h2>
-                <p className="text-sm text-blue-100">Update nama dan email Anda</p>
+                <h2 className="text-lg sm:text-xl font-semibold">Informasi Profil</h2>
+                <p className="text-xs sm:text-sm text-blue-100">Update nama dan email Anda</p>
               </div>
             </div>
           </div>
 
-          <form onSubmit={handleUpdateProfile} className="p-6 space-y-6">
+          <form onSubmit={handleUpdateProfile} className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
             {/* Username (Read Only) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                 Username
               </label>
               <input
                 type="text"
                 value={profileData.username}
                 disabled
-                className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-600 cursor-not-allowed"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-600 cursor-not-allowed text-sm sm:text-base"
               />
-              <p className="text-xs text-gray-500 mt-1">Username tidak dapat diubah</p>
+              <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Username tidak dapat diubah</p>
             </div>
 
             {/* Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                 Nama Lengkap <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiUser className="text-gray-400" size={20} />
+                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                  <FiUser className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <input
                   type="text"
                   name="name"
                   value={profileData.name}
                   onChange={handleProfileChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                   placeholder="Masukkan nama lengkap"
                   required
                 />
@@ -455,19 +455,19 @@ const SettingsPage = () => {
 
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                 Email <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiMail className="text-gray-400" size={20} />
+                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                  <FiMail className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <input
                   type="email"
                   name="email"
                   value={profileData.email}
                   onChange={handleProfileChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                   placeholder="email@example.com"
                   required
                 />
@@ -479,16 +479,16 @@ const SettingsPage = () => {
               <button
                 type="submit"
                 disabled={loadingProfile}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md"
+                className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md text-sm sm:text-base"
               >
                 {loadingProfile ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
                     <span>Menyimpan...</span>
                   </>
                 ) : (
                   <>
-                    <FiSave size={20} />
+                    <FiSave className="w-4 h-4 sm:w-5 sm:h-5" />
                     <span>Simpan Perubahan</span>
                   </>
                 )}
@@ -498,48 +498,48 @@ const SettingsPage = () => {
         </div>
 
         {/* Change Password Card */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4">
-            <div className="flex items-center gap-3 text-white">
-              <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <FiLock size={24} />
+        <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+            <div className="flex items-center gap-2 sm:gap-3 text-white">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                <FiLock className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Ubah Password</h2>
-                <p className="text-sm text-purple-100">Update password untuk keamanan akun</p>
+                <h2 className="text-lg sm:text-xl font-semibold">Ubah Password</h2>
+                <p className="text-xs sm:text-sm text-purple-100">Update password untuk keamanan akun</p>
               </div>
             </div>
           </div>
 
-          <form onSubmit={handleChangePassword} className="p-6 space-y-6">
+          <form onSubmit={handleChangePassword} className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
             {/* PIN Verification (if user has PIN) */}
             {hasPin && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <FiLock className="text-white" size={16} />
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 sm:p-4">
+                <div className="flex items-start gap-2 sm:gap-3 mb-2 sm:mb-3">
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <FiLock className="text-white w-3 h-3 sm:w-4 sm:h-4" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-purple-900">Verifikasi Keamanan</p>
-                    <p className="text-xs text-purple-700 mt-1">
+                    <p className="text-xs sm:text-sm font-medium text-purple-900">Verifikasi Keamanan</p>
+                    <p className="text-xs text-purple-700 mt-0.5 sm:mt-1">
                       Masukkan PIN Anda untuk mengubah password sebagai lapisan keamanan tambahan
                     </p>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-purple-900 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-purple-900 mb-1 sm:mb-2">
                     PIN Verifikasi (6 Digit) <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FiLock className="text-purple-400" size={20} />
+                    <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                      <FiLock className="text-purple-400 w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <input
                       type={showVerificationPin ? 'text' : 'password'}
                       name="verificationPin"
                       value={passwordWithPinData.verificationPin}
                       onChange={handlePasswordChange}
-                      className="w-full pl-10 pr-12 py-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-center text-2xl tracking-widest"
+                      className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-center text-xl sm:text-2xl tracking-widest"
                       placeholder="••••••"
                       maxLength={6}
                       required
@@ -547,9 +547,9 @@ const SettingsPage = () => {
                     <button
                       type="button"
                       onClick={() => setShowVerificationPin(!showVerificationPin)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-purple-400 hover:text-purple-600"
+                      className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-purple-400 hover:text-purple-600"
                     >
-                      {showVerificationPin ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                      {showVerificationPin ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
                     </button>
                   </div>
                 </div>
@@ -558,100 +558,100 @@ const SettingsPage = () => {
 
             {/* Current Password */}
             <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="block text-sm font-medium text-gray-700">
+              <div className="flex justify-between items-center mb-1 sm:mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700">
                   Password Saat Ini <span className="text-red-500">*</span>
                 </label>
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="text-sm text-purple-600 hover:text-purple-700 hover:underline font-medium"
+                  className="text-xs sm:text-sm text-purple-600 hover:text-purple-700 hover:underline font-medium"
                 >
                   Lupa Password?
                 </button>
               </div>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400" size={20} />
+                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <input
                   type={showCurrentPassword ? 'text' : 'password'}
                   name="currentPassword"
                   value={passwordWithPinData.currentPassword}
                   onChange={handlePasswordChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
                   placeholder="Masukkan password saat ini"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
                 >
-                  {showCurrentPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                  {showCurrentPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
               </div>
             </div>
 
             {/* New Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                 Password Baru <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400" size={20} />
+                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <input
                   type={showNewPassword ? 'text' : 'password'}
                   name="newPassword"
                   value={passwordWithPinData.newPassword}
                   onChange={handlePasswordChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
                   placeholder="Masukkan password baru (min. 6 karakter)"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
                 >
-                  {showNewPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                  {showNewPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
               </div>
             </div>
 
             {/* Confirm Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                 Konfirmasi Password Baru <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400" size={20} />
+                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   name="confirmPassword"
                   value={passwordWithPinData.confirmPassword}
                   onChange={handlePasswordChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
                   placeholder="Ulangi password baru"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
                 >
-                  {showConfirmPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                  {showConfirmPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
               </div>
             </div>
 
             {/* Password Strength Info */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-sm text-yellow-800">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-yellow-800">
                 <strong>Tips keamanan:</strong> Gunakan kombinasi huruf besar, huruf kecil, angka, dan simbol untuk password yang lebih kuat.
               </p>
             </div>
@@ -661,16 +661,16 @@ const SettingsPage = () => {
               <button
                 type="submit"
                 disabled={loadingPassword}
-                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md"
+                className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md text-sm sm:text-base"
               >
                 {loadingPassword ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
                     <span>Mengubah...</span>
                   </>
                 ) : (
                   <>
-                    <FiLock size={20} />
+                    <FiLock className="w-4 h-4 sm:w-5 sm:h-5" />
                     <span>Ubah Password</span>
                   </>
                 )}
@@ -680,34 +680,34 @@ const SettingsPage = () => {
         </div>
 
         {/* Security PIN Card */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4">
-            <div className="flex items-center gap-3 text-white">
-              <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <FiLock size={24} />
+        <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+            <div className="flex items-center gap-2 sm:gap-3 text-white">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                <FiLock className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">
+                <h2 className="text-lg sm:text-xl font-semibold">
                   {hasPin ? 'Ubah PIN Keamanan' : 'Buat PIN Keamanan'}
                 </h2>
-                <p className="text-sm text-green-100">
+                <p className="text-xs sm:text-sm text-green-100">
                   PIN 6 digit untuk mengakses halaman keuangan dan menghapus data
                 </p>
               </div>
             </div>
           </div>
 
-          <form onSubmit={handleSetPin} className="p-6 space-y-6">
+          <form onSubmit={handleSetPin} className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
             {/* PIN Status Info */}
             {hasPin ? (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <p className="text-sm text-green-800">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                <p className="text-xs sm:text-sm text-green-800">
                   <strong>✓ PIN sudah diatur.</strong> Masukkan PIN saat ini untuk verifikasi, kemudian buat PIN baru.
                 </p>
               </div>
             ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                <p className="text-xs sm:text-sm text-yellow-800">
                   <strong>⚠ PIN belum diatur.</strong> Buat PIN untuk melindungi akses ke halaman keuangan dan penghapusan data penting.
                 </p>
               </div>
@@ -715,20 +715,20 @@ const SettingsPage = () => {
 
             {/* Current PIN (only if user already has PIN) */}
             {hasPin && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <label className="block text-sm font-medium text-green-900 mb-2">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                <label className="block text-xs sm:text-sm font-medium text-green-900 mb-1 sm:mb-2">
                   PIN Saat Ini (Untuk Verifikasi) <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <FiLock className="text-green-400" size={20} />
+                  <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                    <FiLock className="text-green-400 w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <input
                     type={showCurrentPin ? 'text' : 'password'}
                     name="currentPin"
                     value={pinData.currentPin}
                     onChange={handlePinChange}
-                    className="w-full pl-10 pr-12 py-3 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-center text-2xl tracking-widest"
+                    className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-center text-lg sm:text-xl md:text-2xl tracking-widest"
                     placeholder="••••••"
                     maxLength={6}
                     required
@@ -736,12 +736,12 @@ const SettingsPage = () => {
                   <button
                     type="button"
                     onClick={() => setShowCurrentPin(!showCurrentPin)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-green-400 hover:text-green-600"
+                    className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-green-400 hover:text-green-600"
                   >
-                    {showCurrentPin ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                    {showCurrentPin ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
                   </button>
                 </div>
-                <p className="text-xs text-green-700 mt-2">
+                <p className="text-xs text-green-700 mt-1 sm:mt-2">
                   🔒 Masukkan PIN saat ini sebagai verifikasi keamanan sebelum mengubah ke PIN baru
                 </p>
               </div>
@@ -749,19 +749,19 @@ const SettingsPage = () => {
 
             {/* PIN Input */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                 PIN Baru (6 Digit) <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400" size={20} />
+                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <input
                   type={showPin ? 'text' : 'password'}
                   name="pin"
                   value={pinData.pin}
                   onChange={handlePinChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-2xl tracking-widest"
+                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-lg sm:text-xl md:text-2xl tracking-widest"
                   placeholder="••••••"
                   maxLength={6}
                   required
@@ -769,9 +769,9 @@ const SettingsPage = () => {
                 <button
                   type="button"
                   onClick={() => setShowPin(!showPin)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
                 >
-                  {showPin ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                  {showPin ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-1">Masukkan 6 digit angka (contoh: 123456)</p>
@@ -779,19 +779,19 @@ const SettingsPage = () => {
 
             {/* Confirm PIN */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                 Konfirmasi PIN Baru <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400" size={20} />
+                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <input
                   type={showConfirmPin ? 'text' : 'password'}
                   name="confirmPin"
                   value={pinData.confirmPin}
                   onChange={handlePinChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-2xl tracking-widest"
+                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-lg sm:text-xl md:text-2xl tracking-widest"
                   placeholder="••••••"
                   maxLength={6}
                   required
@@ -799,9 +799,9 @@ const SettingsPage = () => {
                 <button
                   type="button"
                   onClick={() => setShowConfirmPin(!showConfirmPin)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
                 >
-                  {showConfirmPin ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                  {showConfirmPin ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
               </div>
             </div>
@@ -849,16 +849,16 @@ const SettingsPage = () => {
               <button
                 type="submit"
                 disabled={loadingPin}
-                className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md"
+                className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md text-sm sm:text-base"
               >
                 {loadingPin ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
                     <span>{hasPin ? 'Mengubah...' : 'Membuat...'}</span>
                   </>
                 ) : (
                   <>
-                    <FiLock size={20} />
+                    <FiLock className="w-4 h-4 sm:w-5 sm:h-5" />
                     <span>{hasPin ? 'Ubah PIN' : 'Buat PIN'}</span>
                   </>
                 )}

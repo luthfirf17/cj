@@ -4,12 +4,28 @@ import Button from '../Common/Button';
 import Input from '../Common/Input';
 import Select from '../Common/Select';
 import TextArea from '../Common/TextArea';
-import { FiDollarSign, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMapPin } from 'react-icons/fi';
+import CountryCodeDropdown from '../Common/CountryCodeDropdown';
+import { FiDollarSign, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMapPin, FiMinus, FiUser, FiMessageCircle, FiChevronDown } from 'react-icons/fi';
+import { formatPhoneForWhatsApp } from '../../utils/phoneUtils';
 import api from '../../services/api';
 
 const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState([]);
+  const [responsibleParties, setResponsibleParties] = useState([]);
+  const [serviceResponsibleParties, setServiceResponsibleParties] = useState([]);
+  const [showResponsiblePartiesDropdown, setShowResponsiblePartiesDropdown] = useState(false);
+  const [showAddResponsiblePartyModal, setShowAddResponsiblePartyModal] = useState(false);
+  const [showEditResponsiblePartyModal, setShowEditResponsiblePartyModal] = useState(false);
+  const [editingResponsibleParty, setEditingResponsibleParty] = useState(null);
+  const [responsiblePartySearch, setResponsiblePartySearch] = useState('');
+  const [responsiblePartyModalData, setResponsiblePartyModalData] = useState({
+    id: null,
+    name: '',
+    phone: '',
+    countryCode: '62', // Default Indonesia
+    address: '',
+  });
   const [formData, setFormData] = useState({
     client_name: '',
     contact: '',
@@ -20,7 +36,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     booking_time_end: '',
     booking_days: 1,
     service_mode: 'single', // single or multiple
-    selected_services: [{ service_id: '', custom_price: 0 }],
+    selected_services: [{ service_id: '', custom_price: 0, quantity: 1, responsible_party_id: null }],
     location_name: '',
     location_map_url: '',
     status: 'Dijadwalkan',
@@ -31,11 +47,22 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     tax_percentage: 0,
     additional_fees: [],
     notes: '',
+    responsible_parties: [], // Array of {id, name, phone, address}
   });
 
   const [serviceSearch, setServiceSearch] = useState(['']);
+  const [serviceResponsiblePartySearch, setServiceResponsiblePartySearch] = useState(['']); // Array for service responsible party searches
   const [showServiceDropdown, setShowServiceDropdown] = useState([false]);
+  const [showServiceResponsiblePartyDropdown, setShowServiceResponsiblePartyDropdown] = useState([false]); // Array for service responsible party dropdowns
   const [activeDropdownIndex, setActiveDropdownIndex] = useState(null);
+  const [activeServiceResponsiblePartyDropdownIndex, setActiveServiceResponsiblePartyDropdownIndex] = useState(null);
+  
+  // Multiple Services Selection State
+  const [multipleSelectedServices, setMultipleSelectedServices] = useState([]);
+  
+  // Client Dropdown State
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
   
   // Add Service Modal State
   const [showAddServiceModal, setShowAddServiceModal] = useState(false);
@@ -56,20 +83,97 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
 
   const [errors, setErrors] = useState({});
   const dropdownRefs = useRef([]);
+  const serviceResponsiblePartyDropdownRefs = useRef([]);
+  const clientDropdownRef = useRef(null);
 
   // Fetch booking detail and services
   useEffect(() => {
     if (isOpen && bookingId) {
-      // Fetch services first, then booking detail with services list
+      // Fetch all data first, then booking detail
       const loadData = async () => {
         setLoading(true);
         const servicesList = await fetchServices();
+        await fetchResponsibleParties();
+        await fetchServiceResponsibleParties();
         await fetchBookingDetail(servicesList);
         setLoading(false);
       };
       loadData();
     }
   }, [isOpen, bookingId]);
+
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setFormData({
+        client_name: '',
+        contact: '',
+        address: '',
+        booking_date: '',
+        booking_date_end: '',
+        booking_time: '',
+        booking_time_end: '',
+        booking_days: 1,
+        service_mode: 'single',
+        selected_services: [{ service_id: '', custom_price: 0, quantity: 1, responsible_party_id: null }],
+        location_name: '',
+        location_map_url: '',
+        status: 'Dijadwalkan',
+        payment_status: 'Belum Bayar',
+        total_amount: 0,
+        amount_paid: 0,
+        discount: 0,
+        tax_percentage: 0,
+        additional_fees: [],
+        notes: '',
+        responsible_parties: [],
+      });
+      setServiceSearch(['']);
+      setServiceResponsiblePartySearch(['']);
+      setShowServiceDropdown([false]);
+      setShowServiceResponsiblePartyDropdown([false]);
+      setActiveDropdownIndex(null);
+      setActiveServiceResponsiblePartyDropdownIndex(null);
+      setMultipleSelectedServices([]);
+      setClientSearch('');
+      setShowClientDropdown(false);
+      setResponsiblePartySearch('');
+      setShowResponsiblePartiesDropdown(false);
+      setShowAddResponsiblePartyModal(false);
+      setShowEditResponsiblePartyModal(false);
+      setEditingResponsibleParty(null);
+      setResponsiblePartyModalData({
+        id: null,
+        name: '',
+        phone: '',
+        countryCode: '62',
+        address: '',
+      });
+      setShowAddServiceModal(false);
+      setNewServiceData({
+        name: '',
+        description: '',
+        default_price: 0,
+      });
+      setShowEditServiceModal(false);
+      setEditServiceData({
+        id: null,
+        name: '',
+        description: '',
+        default_price: 0,
+      });
+      setShowAddResponsiblePartyModal(false);
+      setShowEditResponsiblePartyModal(false);
+      setResponsiblePartyModalData({
+        id: null,
+        name: '',
+        phone: '',
+        countryCode: '62',
+        address: '',
+      });
+      setErrors({});
+    }
+  }, [isOpen]);
 
   const fetchBookingDetail = async (servicesList = []) => {
     try {
@@ -119,7 +223,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           // New format: services array in booking_details
           selectedServices = bookingDetails.services.map(s => ({
             service_id: s.service_id?.toString() || '',
-            custom_price: parseFloat(s.custom_price) || 0
+            custom_price: parseFloat(s.custom_price) || 0,
+            quantity: parseInt(s.quantity) || 1,
+            responsible_party_id: s.responsible_party_id ? parseInt(s.responsible_party_id) : null
           }));
         } else if (booking.service_id) {
           // Legacy format: single service_id from booking
@@ -128,7 +234,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           
           selectedServices = [{ 
             service_id: serviceExists ? booking.service_id.toString() : '', 
-            custom_price: parseFloat(booking.total_amount) || 0 
+            custom_price: parseFloat(booking.total_amount) || 0,
+            quantity: 1,
+            responsible_party_id: null
           }];
           
           console.log('📝 Legacy booking format detected:', {
@@ -149,8 +257,39 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         } else {
           // No service information available
           console.warn('⚠️ No service information found in booking:', booking.id);
-          selectedServices = [{ service_id: '', custom_price: 0 }];
+          selectedServices = [{ service_id: '', custom_price: 0, quantity: 1, responsible_party_id: '' }];
         }
+
+        // Update responsible_party_id for each service using current data
+        selectedServices = selectedServices.map(service => {
+          if (service.service_id) {
+            let responsiblePartyId = service.responsible_party_id;
+            
+            // If no responsible_party_id from booking, try to find from serviceResponsibleParties
+            if (!responsiblePartyId) {
+              const serviceResp = serviceResponsibleParties.find(srp => srp.service_id == service.service_id);
+              if (serviceResp) {
+                responsiblePartyId = serviceResp.responsible_party_id;
+              }
+            }
+            
+            // If still no, try to find by name matching (legacy)
+            if (!responsiblePartyId) {
+              const serviceObj = servicesList.find(s => s.id == service.service_id);
+              if (serviceObj) {
+                const globalResp = responsibleParties.find(rp => 
+                  rp.name && serviceObj.name && serviceObj.name.toLowerCase().includes(rp.name.toLowerCase())
+                );
+                if (globalResp) {
+                  responsiblePartyId = globalResp.id;
+                }
+              }
+            }
+            
+            return { ...service, responsible_party_id: responsiblePartyId };
+          }
+          return service;
+        });
 
         // Use parsed details if available, otherwise fall back to legacy format
         setFormData({
@@ -174,7 +313,15 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           tax_percentage: bookingDetails?.tax_percentage || 0,
           additional_fees: bookingDetails?.additional_fees || [],
           notes: userNotes, // Use extracted user notes
+          responsible_parties: bookingDetails?.responsible_parties || [], // Load existing responsible parties
         });
+
+        // Initialize multiple selected services for checkboxes
+        if (selectedServices.length > 1) {
+          setMultipleSelectedServices(selectedServices.filter(s => s.service_id).map(s => s.service_id));
+        } else {
+          setMultipleSelectedServices([]);
+        }
       }
     } catch (error) {
       console.error('Error fetching booking detail:', error);
@@ -210,11 +357,28 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         setShowServiceDropdown(newShowDropdown);
         setActiveDropdownIndex(null);
       }
+
+      // Close service responsible party dropdown
+      if (activeServiceResponsiblePartyDropdownIndex !== null && 
+          serviceResponsiblePartyDropdownRefs.current[activeServiceResponsiblePartyDropdownIndex] && 
+          !serviceResponsiblePartyDropdownRefs.current[activeServiceResponsiblePartyDropdownIndex].contains(event.target)) {
+        const newShowDropdown = [...showServiceResponsiblePartyDropdown];
+        newShowDropdown[activeServiceResponsiblePartyDropdownIndex] = false;
+        setShowServiceResponsiblePartyDropdown(newShowDropdown);
+        setActiveServiceResponsiblePartyDropdownIndex(null);
+      }
+
+      // Close responsible parties dropdown
+      if (showResponsiblePartiesDropdown && 
+          !event.target.closest('.responsible-parties-dropdown')) {
+        setShowResponsiblePartiesDropdown(false);
+        setResponsiblePartySearch('');
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [activeDropdownIndex, showServiceDropdown]);
+  }, [activeDropdownIndex, activeServiceResponsiblePartyDropdownIndex, showServiceDropdown, showServiceResponsiblePartyDropdown, showResponsiblePartiesDropdown]);
 
   // Calculate booking days from date range
   useEffect(() => {
@@ -244,7 +408,8 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       if (service.service_id) {
         const serviceData = services.find(s => s.id === parseInt(service.service_id));
         const price = service.custom_price || (serviceData ? serviceData.default_price : 0);
-        subtotal += price;
+        const quantity = service.quantity || 1;
+        subtotal += price * quantity;
       }
     });
 
@@ -294,18 +459,21 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     setFormData(prev => ({
       ...prev,
       service_mode: mode,
-      selected_services: mode === 'single' ? [{ service_id: prev.selected_services[0]?.service_id || '', custom_price: prev.selected_services[0]?.custom_price || 0 }] : prev.selected_services,
+      selected_services: mode === 'single' ? [{ service_id: prev.selected_services[0]?.service_id || '', custom_price: prev.selected_services[0]?.custom_price || 0, quantity: prev.selected_services[0]?.quantity || 1, responsible_party_id: prev.selected_services[0]?.responsible_party_id || '' }] : [],
     }));
+    setMultipleSelectedServices([]);
   };
 
   // Add new service row
   const addServiceRow = () => {
     setFormData(prev => ({
       ...prev,
-      selected_services: [...prev.selected_services, { service_id: '', custom_price: 0 }],
+      selected_services: [...prev.selected_services, { service_id: '', custom_price: 0, quantity: 1, responsible_party_id: null }],
     }));
     setServiceSearch(prev => [...prev, '']);
+    setServiceResponsiblePartySearch(prev => [...prev, '']);
     setShowServiceDropdown(prev => [...prev, false]);
+    setShowServiceResponsiblePartyDropdown(prev => [...prev, false]);
   };
 
   // Remove service row
@@ -315,7 +483,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       selected_services: prev.selected_services.filter((_, i) => i !== index),
     }));
     setServiceSearch(prev => prev.filter((_, i) => i !== index));
+    setServiceResponsiblePartySearch(prev => prev.filter((_, i) => i !== index));
     setShowServiceDropdown(prev => prev.filter((_, i) => i !== index));
+    setShowServiceResponsiblePartyDropdown(prev => prev.filter((_, i) => i !== index));
   };
 
   // Update service in row
@@ -325,6 +495,29 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       updatedServices[index] = { ...updatedServices[index], [field]: value };
       return { ...prev, selected_services: updatedServices };
     });
+  };
+
+  // Handle service responsible party selection
+  const handleServiceResponsiblePartySelect = (serviceIndex, partyId) => {
+    setFormData(prev => {
+      const updatedServices = [...prev.selected_services];
+      updatedServices[serviceIndex] = { 
+        ...updatedServices[serviceIndex], 
+        responsible_party_id: partyId 
+      };
+      return { ...prev, selected_services: updatedServices };
+    });
+    
+    // Close dropdown
+    const newShowDropdown = [...showServiceResponsiblePartyDropdown];
+    newShowDropdown[serviceIndex] = false;
+    setShowServiceResponsiblePartyDropdown(newShowDropdown);
+    setActiveServiceResponsiblePartyDropdownIndex(null);
+    
+    // Clear search
+    const newSearch = [...serviceResponsiblePartySearch];
+    newSearch[serviceIndex] = '';
+    setServiceResponsiblePartySearch(newSearch);
   };
 
   // Add additional fee
@@ -352,16 +545,149 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     });
   };
 
-  // Handle edit service
-  const handleEditService = (service) => {
-    setEditServiceData({
-      id: service.id,
-      name: service.name,
-      description: service.description || '',
-      default_price: service.default_price || 0,
-    });
-    setShowEditServiceModal(true);
+  // Handle responsible parties
+  const handleResponsiblePartyChange = (partyId, checked) => {
+    if (checked) {
+      const party = responsibleParties.find(p => p.id === partyId);
+      if (party) {
+        setFormData(prev => ({
+          ...prev,
+          responsible_parties: [...prev.responsible_parties, party]
+        }));
+      }
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        responsible_parties: prev.responsible_parties.filter(p => p.id !== partyId)
+      }));
+    }
   };
+
+  const handleAddResponsibleParty = () => {
+    setResponsiblePartyModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+    setEditingResponsibleParty(null);
+    setShowAddResponsiblePartyModal(true);
+    setShowResponsiblePartiesDropdown(false);
+    setResponsiblePartySearch('');
+  };
+
+  const handleEditResponsibleParty = (party) => {
+    // Parse phone number to separate country code and number
+    let countryCode = '62';
+    let phoneNumber = party.phone;
+
+    // Try to extract country code from phone number
+    if (party.phone.startsWith('+')) {
+      // Remove + and extract country code
+      const phoneWithoutPlus = party.phone.substring(1);
+      if (phoneWithoutPlus.startsWith('62')) {
+        countryCode = '62';
+        phoneNumber = phoneWithoutPlus.substring(2);
+      }
+    }
+
+    setResponsiblePartyModalData({
+      id: party.id,
+      name: party.name,
+      phone: phoneNumber,
+      countryCode: countryCode,
+      address: party.address
+    });
+    setEditingResponsibleParty(party);
+    setShowAddResponsiblePartyModal(true);
+    setShowResponsiblePartiesDropdown(false);
+    setResponsiblePartySearch('');
+  };
+
+  const handleSaveResponsibleParty = async () => {
+    if (!responsiblePartyModalData.name.trim() || !responsiblePartyModalData.phone.trim()) {
+      alert('Nama dan nomor telepon wajib diisi!');
+      return;
+    }
+
+    try {
+      // Format phone number with country code for WhatsApp
+      const formattedPhone = formatPhoneForWhatsApp(responsiblePartyModalData.phone, responsiblePartyModalData.countryCode);
+
+      const payload = {
+        name: responsiblePartyModalData.name.trim(),
+        phone: formattedPhone, // Save formatted phone
+        address: responsiblePartyModalData.address.trim()
+      };
+
+      let response;
+      if (editingResponsibleParty) {
+        response = await api.put(`/user/responsible-parties/${editingResponsibleParty.id}`, payload);
+      } else {
+        response = await api.post('/user/responsible-parties', payload);
+      }
+
+      if (response.data.success) {
+        alert(editingResponsibleParty ? 'Penanggung jawab berhasil diupdate!' : 'Penanggung jawab berhasil ditambahkan!');
+        fetchResponsibleParties();
+        setShowAddResponsiblePartyModal(false);
+        setResponsiblePartyModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+        setEditingResponsibleParty(null);
+      }
+    } catch (error) {
+      console.error('Error saving responsible party:', error);
+      alert('Gagal menyimpan penanggung jawab. Silakan coba lagi.');
+    }
+  };
+
+  const handleDeleteResponsibleParty = async (partyId) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus penanggung jawab ini?')) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/user/responsible-parties/${partyId}`);
+
+      if (response.data.success) {
+        alert('Penanggung jawab berhasil dihapus!');
+        fetchResponsibleParties();
+        // Remove from selected parties if it was selected
+        setFormData(prev => ({
+          ...prev,
+          responsible_parties: prev.responsible_parties.filter(p => p.id !== partyId)
+        }));
+      }
+    } catch (error) {
+      console.error('Error deleting responsible party:', error);
+      alert('Gagal menghapus penanggung jawab. Silakan coba lagi.');
+    }
+  };
+
+  // Fetch responsible parties
+  const fetchResponsibleParties = async () => {
+    try {
+      const response = await api.get('/user/responsible-parties');
+      if (response.data.success) {
+        setResponsibleParties(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching responsible parties:', error);
+    }
+  };
+
+  // Fetch service responsible parties
+  const fetchServiceResponsibleParties = async () => {
+    try {
+      const response = await api.get('/user/service-responsible-parties');
+      if (response.data.success) {
+        setServiceResponsibleParties(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching service responsible parties:', error);
+    }
+  };
+
+  // Filter responsible parties based on search term
+  const filteredResponsibleParties = responsibleParties.filter(party =>
+    party.name.toLowerCase().includes(responsiblePartySearch.toLowerCase()) ||
+    party.phone.includes(responsiblePartySearch) ||
+    (party.address && party.address.toLowerCase().includes(responsiblePartySearch.toLowerCase()))
+  );
 
   // Handle delete service
   const handleDeleteService = async (serviceId) => {
@@ -480,13 +806,16 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         services: formData.selected_services.filter(s => s.service_id).map(s => ({
           service_id: s.service_id,
           service_name: services.find(srv => srv.id === parseInt(s.service_id))?.name || '',
-          custom_price: s.custom_price
+          custom_price: s.custom_price,
+          quantity: s.quantity || 1,
+          responsible_party_id: s.responsible_party_id || null
         })),
         discount: formData.discount,
         tax_percentage: formData.tax_percentage,
         additional_fees: formData.additional_fees,
         payment_status: formData.payment_status,
-        amount_paid: formData.amount_paid
+        amount_paid: formData.amount_paid,
+        responsible_parties: formData.responsible_parties, // Add responsible parties
       };
       
       // Convert Indonesian status back to English for backend
@@ -799,35 +1128,66 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                                         className="hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
                                       >
                                         <div className="flex items-center gap-2 px-3 py-2">
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              updateServiceRow(index, 'service_id', s.id.toString());
-                                              updateServiceRow(index, 'custom_price', s.default_price);
-                                              const newShowDropdown = [...showServiceDropdown];
-                                              newShowDropdown[index] = false;
-                                              setShowServiceDropdown(newShowDropdown);
-                                              const newSearch = [...serviceSearch];
-                                              newSearch[index] = '';
-                                              setServiceSearch(newSearch);
-                                            }}
-                                            className="flex-1 text-left flex items-center justify-between min-w-0"
-                                          >
-                                            <div className="flex-1 min-w-0 pr-3">
-                                              <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
-                                              {s.description && (
-                                                <div className="text-xs text-gray-500 mt-0.5 truncate">{s.description}</div>
-                                              )}
-                                            </div>
-                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                              <span className="text-sm font-medium text-green-600 whitespace-nowrap">
-                                                Rp {s.default_price?.toLocaleString('id-ID')}
-                                              </span>
-                                              {selectedService?.id === s.id && (
-                                                <FiCheck className="w-4 h-4 text-blue-600" />
-                                              )}
-                                            </div>
-                                          </button>
+                                          {/* For multiple mode and first dropdown, show checkboxes */}
+                                          {formData.service_mode === 'multiple' && index === 0 ? (
+                                            <>
+                                              <input
+                                                type="checkbox"
+                                                checked={multipleSelectedServices.includes(s.id.toString())}
+                                                onChange={(e) => {
+                                                  if (e.target.checked) {
+                                                    setMultipleSelectedServices(prev => [...prev, s.id.toString()]);
+                                                  } else {
+                                                    setMultipleSelectedServices(prev => prev.filter(id => id !== s.id.toString()));
+                                                  }
+                                                }}
+                                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                              />
+                                              <div className="flex-1 text-left flex items-center justify-between min-w-0">
+                                                <div className="flex-1 min-w-0 pr-3">
+                                                  <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                                                  {s.description && (
+                                                    <div className="text-xs text-gray-500 mt-0.5 truncate">{s.description}</div>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-2 flex-shrink-0">
+                                                  <span className="text-sm font-medium text-green-600 whitespace-nowrap">
+                                                    Rp {s.default_price?.toLocaleString('id-ID')}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                updateServiceRow(index, 'service_id', s.id.toString());
+                                                updateServiceRow(index, 'custom_price', s.default_price);
+                                                const newShowDropdown = [...showServiceDropdown];
+                                                newShowDropdown[index] = false;
+                                                setShowServiceDropdown(newShowDropdown);
+                                                const newSearch = [...serviceSearch];
+                                                newSearch[index] = '';
+                                                setServiceSearch(newSearch);
+                                              }}
+                                              className="flex-1 text-left flex items-center justify-between min-w-0"
+                                            >
+                                              <div className="flex-1 min-w-0 pr-3">
+                                                <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                                                {s.description && (
+                                                  <div className="text-xs text-gray-500 mt-0.5 truncate">{s.description}</div>
+                                                )}
+                                              </div>
+                                              <div className="flex items-center gap-2 flex-shrink-0">
+                                                <span className="text-sm font-medium text-green-600 whitespace-nowrap">
+                                                  Rp {s.default_price?.toLocaleString('id-ID')}
+                                                </span>
+                                                {selectedService?.id === s.id && (
+                                                  <FiCheck className="w-4 h-4 text-blue-600" />
+                                                )}
+                                              </div>
+                                            </button>
+                                          )}
                                           
                                           <div className="flex items-center gap-1 flex-shrink-0">
                                             <button
@@ -865,6 +1225,37 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Apply Selection Button for Multiple Mode */}
+                                {formData.service_mode === 'multiple' && index === 0 && multipleSelectedServices.length > 0 && (
+                                  <div className="p-3 border-t border-gray-100 bg-gray-50">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        // Apply selected services
+                                        const newSelectedServices = multipleSelectedServices.map(serviceId => ({
+                                          service_id: serviceId,
+                                          custom_price: services.find(s => s.id === parseInt(serviceId))?.default_price || 0,
+                                          quantity: 1,
+                                          responsible_party_id: null
+                                        }));
+                                        setFormData(prev => ({ ...prev, selected_services: newSelectedServices }));
+                                        
+                                        // Reset search and close dropdown
+                                        const newShowDropdown = [...showServiceDropdown];
+                                        newShowDropdown[index] = false;
+                                        setShowServiceDropdown(newShowDropdown);
+                                        const newSearch = [...serviceSearch];
+                                        newSearch[index] = '';
+                                        setServiceSearch(newSearch);
+                                        setMultipleSelectedServices([]);
+                                      }}
+                                      className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                                    >
+                                      Terapkan Pilihan ({multipleSelectedServices.length} layanan)
+                                    </button>
+                                  </div>
+                                )}
 
                                 <button
                                   type="button"
@@ -931,6 +1322,214 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                                 placeholder="0"
                               />
                             </div>
+                          </div>
+                          <div className="flex justify-between items-center mt-2">
+                            <span className="text-sm text-gray-700">Jumlah Yang Di Pesan</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentQty = service.quantity || 1;
+                                  updateServiceRow(index, 'quantity', Math.max(1, currentQty - 1));
+                                }}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-800 transition-colors"
+                                title="Kurangi jumlah"
+                              >
+                                <FiMinus className="w-4 h-4" />
+                              </button>
+                              <input
+                                type="number"
+                                value={service.quantity && service.quantity !== 1 ? service.quantity : ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === '') {
+                                    updateServiceRow(index, 'quantity', undefined);
+                                  } else {
+                                    const numValue = parseInt(value) || 1;
+                                    updateServiceRow(index, 'quantity', Math.max(1, numValue));
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  if (!service.quantity || service.quantity < 1) {
+                                    updateServiceRow(index, 'quantity', 1);
+                                  }
+                                }}
+                                min="1"
+                                placeholder="1"
+                                className="w-16 text-center rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentQty = service.quantity || 1;
+                                  updateServiceRow(index, 'quantity', currentQty + 1);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-800 transition-colors"
+                                title="Tambah jumlah"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Penanggung Jawab Layanan */}
+                    {selectedService && (
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="text-sm text-gray-700">Penanggung Jawab Layanan</span>
+                        <div className="flex items-center gap-2">
+                          <div className="relative" ref={el => serviceResponsiblePartyDropdownRefs.current[index] = el}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newShowDropdown = [...showServiceResponsiblePartyDropdown];
+                                newShowDropdown[index] = !newShowDropdown[index];
+                                setShowServiceResponsiblePartyDropdown(newShowDropdown);
+                                setActiveServiceResponsiblePartyDropdownIndex(index);
+                              }}
+                              className="w-40 px-2 py-1.5 text-left bg-white border border-gray-300 rounded-lg hover:border-blue-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors text-xs flex items-center justify-between"
+                            >
+                              <span className={service.responsible_party_id ? 'text-gray-900' : 'text-gray-400'}>
+                                {service.responsible_party_id
+                                  ? responsibleParties.find(rp => rp.id === parseInt(service.responsible_party_id))?.name || 'Tidak ditemukan'
+                                  : 'Pilih...'}
+                              </span>
+                              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+
+                            {/* Service Responsible Party Dropdown */}
+                            {showServiceResponsiblePartyDropdown[index] && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  onClick={() => {
+                                    const newShowDropdown = [...showServiceResponsiblePartyDropdown];
+                                    newShowDropdown[index] = false;
+                                    setShowServiceResponsiblePartyDropdown(newShowDropdown);
+                                  }}
+                                />
+                                <div className="absolute z-20 w-48 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden right-0">
+                                  {/* Search Input */}
+                                  <div className="p-2 border-b border-gray-100">
+                                    <div className="relative">
+                                      <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                      <input
+                                        type="text"
+                                        value={serviceResponsiblePartySearch[index] || ''}
+                                        onChange={(e) => {
+                                          const newSearch = [...serviceResponsiblePartySearch];
+                                          newSearch[index] = e.target.value;
+                                          setServiceResponsiblePartySearch(newSearch);
+                                        }}
+                                        placeholder="Cari penanggung jawab..."
+                                        className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Responsible Party List */}
+                                  <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                                    {responsibleParties.filter(party =>
+                                      party.name.toLowerCase().includes((serviceResponsiblePartySearch[index] || '').toLowerCase()) ||
+                                      party.phone.includes(serviceResponsiblePartySearch[index] || '') ||
+                                      (party.address && party.address.toLowerCase().includes((serviceResponsiblePartySearch[index] || '').toLowerCase()))
+                                    ).length > 0 ? (
+                                      responsibleParties.filter(party =>
+                                        party.name.toLowerCase().includes((serviceResponsiblePartySearch[index] || '').toLowerCase()) ||
+                                        party.phone.includes(serviceResponsiblePartySearch[index] || '') ||
+                                        (party.address && party.address.toLowerCase().includes((serviceResponsiblePartySearch[index] || '').toLowerCase()))
+                                      ).map(party => (
+                                        <div
+                                          key={party.id}
+                                          className="w-full text-left flex items-center justify-between min-w-0 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 px-3 py-2"
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() => handleServiceResponsiblePartySelect(index, party.id.toString())}
+                                            className="flex-1 min-w-0 pr-3 text-left"
+                                          >
+                                            <div className="text-sm font-medium text-gray-900 truncate">{party.name}</div>
+                                            <div className="text-xs text-gray-500 mt-0.5 truncate">
+                                              {party.phone} {party.address && `• ${party.address}`}
+                                            </div>
+                                          </button>
+                                          <div className="flex items-center gap-2 flex-shrink-0">
+                                            {party.phone && (
+                                              <a
+                                                href={`https://wa.me/${party.countryCode || '62'}${party.phone.replace(/^0/, '')}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="text-green-600 hover:text-green-700 transition-colors"
+                                                title={`WhatsApp ${party.name}`}
+                                              >
+                                                <FiMessageCircle className="w-4 h-4" />
+                                              </a>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditResponsibleParty(party);
+                                                const newShowDropdown = [...showServiceResponsiblePartyDropdown];
+                                                newShowDropdown[index] = false;
+                                                setShowServiceResponsiblePartyDropdown(newShowDropdown);
+                                              }}
+                                              className="text-blue-600 hover:text-blue-700 transition-colors"
+                                              title="Edit penanggung jawab"
+                                            >
+                                              <FiEdit2 className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteResponsibleParty(party.id);
+                                                const newShowDropdown = [...showServiceResponsiblePartyDropdown];
+                                                newShowDropdown[index] = false;
+                                                setShowServiceResponsiblePartyDropdown(newShowDropdown);
+                                              }}
+                                              className="text-red-600 hover:text-red-700 transition-colors"
+                                              title="Hapus penanggung jawab"
+                                            >
+                                              <FiTrash2 className="w-4 h-4" />
+                                            </button>
+                                            {service.responsible_party_id === party.id.toString() && (
+                                              <FiCheck className="w-4 h-4 text-blue-600" />
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <div className="px-3 py-8 text-center text-gray-500 text-sm">
+                                        Tidak ada penanggung jawab ditemukan
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setResponsiblePartyModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+                                      setEditingResponsibleParty(null);
+                                      setShowAddResponsiblePartyModal(true);
+                                      const newShowDropdown = [...showServiceResponsiblePartyDropdown];
+                                      newShowDropdown[index] = false;
+                                      setShowServiceResponsiblePartyDropdown(newShowDropdown);
+                                    }}
+                                    className="w-full px-3 py-3 text-left border-t border-gray-100 bg-blue-50 hover:bg-blue-100 transition-colors flex items-center gap-2 text-blue-600 font-medium"
+                                  >
+                                    <FiPlus className="w-4 h-4" />
+                                    <span className="text-sm">Tambah Penanggung Jawab Baru</span>
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1180,10 +1779,14 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 const srv = services.find(s => s.id === parseInt(service.service_id));
                 if (!srv) return null;
                 const price = parseFloat(service.custom_price || srv.default_price || 0);
+                const quantity = service.quantity || 1;
+                const totalPrice = price * quantity;
                 return (
                   <div key={index} className="flex justify-between text-sm">
-                    <span className="text-gray-700">{srv.name}:</span>
-                    <span className="text-gray-900 font-medium">Rp {price.toLocaleString('id-ID')}</span>
+                    <span className="text-gray-700">
+                      {srv.name} {quantity > 1 ? `(x${quantity})` : ''}:
+                    </span>
+                    <span className="text-gray-900 font-medium">Rp {totalPrice.toLocaleString('id-ID')}</span>
                   </div>
                 );
               })}
@@ -1195,7 +1798,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
               <span className="text-gray-900 font-medium">
                 Rp {formData.selected_services.reduce((sum, s) => {
                   const srv = services.find(srv => srv.id === parseInt(s.service_id));
-                  return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                  const price = srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0;
+                  const quantity = s.quantity || 1;
+                  return sum + (price * quantity);
                 }, 0).toLocaleString('id-ID')}
               </span>
             </div>
@@ -1207,7 +1812,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 <span className="font-medium">
                   Rp {(formData.selected_services.reduce((sum, s) => {
                     const srv = services.find(srv => srv.id === parseInt(s.service_id));
-                    return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                    const price = srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0;
+                    const quantity = s.quantity || 1;
+                    return sum + (price * quantity);
                   }, 0) * formData.booking_days).toLocaleString('id-ID')}
                 </span>
               </div>
@@ -1227,7 +1834,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
               <span className="text-gray-900 font-medium">
                 Rp {((formData.selected_services.reduce((sum, s) => {
                   const srv = services.find(srv => srv.id === parseInt(s.service_id));
-                  return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
+                  const price = srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0;
+                  const quantity = s.quantity || 1;
+                  return sum + (price * quantity);
                 }, 0) * formData.booking_days) - formData.discount).toLocaleString('id-ID')}
               </span>
             </div>
@@ -1239,8 +1848,10 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 <span className="text-gray-900 font-medium">
                   Rp {(((formData.selected_services.reduce((sum, s) => {
                     const srv = services.find(srv => srv.id === parseInt(s.service_id));
-                    return sum + (srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0);
-                  }, 0) - formData.discount) * formData.tax_percentage) / 100).toLocaleString('id-ID')}
+                    const price = srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0;
+                    const quantity = s.quantity || 1;
+                    return sum + (price * quantity);
+                  }, 0) * formData.booking_days - formData.discount) * formData.tax_percentage) / 100).toLocaleString('id-ID')}
                 </span>
               </div>
             )}
@@ -1286,6 +1897,161 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           </div>
         </div>
 
+        {/* Responsible Parties Section */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Penanggung Jawab Booking</h3>
+          
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Pilih Penanggung Jawab <span className="text-gray-500">(Opsional)</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleAddResponsibleParty}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+              >
+                <FiPlus className="w-4 h-4" />
+                Tambah Penanggung Jawab
+              </button>
+            </div>
+
+            {/* Responsible Parties Dropdown */}
+            <div className="relative responsible-parties-dropdown">
+              <button
+                type="button"
+                onClick={() => setShowResponsiblePartiesDropdown(!showResponsiblePartiesDropdown)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-left flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <div className="flex items-center gap-2">
+                  <FiUser className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-700">
+                    {formData.responsible_parties.length === 0 
+                      ? 'Pilih penanggung jawab...' 
+                      : `${formData.responsible_parties.length} penanggung jawab dipilih`
+                    }
+                  </span>
+                </div>
+                <FiChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showResponsiblePartiesDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showResponsiblePartiesDropdown && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg">
+                  {/* Search Input */}
+                  <div className="p-3 border-b border-gray-200">
+                    <div className="relative">
+                      <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={responsiblePartySearch}
+                        onChange={(e) => setResponsiblePartySearch(e.target.value)}
+                        placeholder="Cari penanggung jawab..."
+                        className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {/* Dropdown Content */}
+                  <div className="max-h-60 overflow-y-auto">
+                    {filteredResponsibleParties.length === 0 ? (
+                      <div className="px-3 py-8 text-center text-gray-500 text-sm">
+                        {responsiblePartySearch 
+                          ? 'Tidak ada penanggung jawab yang cocok dengan pencarian'
+                          : 'Belum ada penanggung jawab. Klik "Tambah Penanggung Jawab" untuk menambahkan.'
+                        }
+                      </div>
+                    ) : (
+                      <div className="py-1">
+                        {filteredResponsibleParties.map((party) => {
+                          const isSelected = formData.responsible_parties.some(p => p.id === party.id);
+                          return (
+                            <div key={party.id} className="flex items-center px-3 py-2 hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => handleResponsiblePartyChange(party.id, e.target.checked)}
+                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <div className="ml-3 flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">{party.name}</div>
+                                    <div className="text-xs text-gray-500 truncate">{party.phone}</div>
+                                    {party.address && (
+                                      <div className="text-xs text-gray-400 truncate">{party.address}</div>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1 ml-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleEditResponsibleParty(party);
+                                        setShowResponsiblePartiesDropdown(false);
+                                        setResponsiblePartySearch('');
+                                      }}
+                                      className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                      title="Edit penanggung jawab"
+                                    >
+                                      <FiEdit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteResponsibleParty(party.id);
+                                      }}
+                                      className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                                      title="Hapus penanggung jawab"
+                                    >
+                                      <FiTrash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Selected Responsible Parties Display */}
+            {formData.responsible_parties.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {formData.responsible_parties.map((party) => (
+                  <div key={party.id} className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <FiUser className="w-4 h-4 text-blue-600" />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{party.name}</div>
+                          <div className="text-xs text-gray-600">{party.phone}</div>
+                          {party.address && (
+                            <div className="text-xs text-gray-500">{party.address}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleResponsiblePartyChange(party.id, false)}
+                      className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                      title="Hapus dari pilihan"
+                    >
+                      <FiX className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Notes */}
         <div>
           <TextArea
@@ -1303,7 +2069,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       {/* Add Service Modal */}
       {showAddServiceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm sm:max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Tambah Layanan Baru</h3>
               <button
@@ -1411,7 +2177,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       {/* Edit Service Modal */}
       {showEditServiceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm sm:max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Edit Layanan</h3>
               <button
@@ -1509,6 +2275,102 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Simpan Perubahan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Responsible Party Modal */}
+      {showAddResponsiblePartyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm sm:max-w-md w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingResponsibleParty ? 'Edit Penanggung Jawab' : 'Tambah Penanggung Jawab Baru'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAddResponsiblePartyModal(false);
+                  setResponsiblePartyModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <FiX className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nama Penanggung Jawab <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={responsiblePartyModalData.name}
+                  onChange={(e) => setResponsiblePartyModalData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Masukkan nama penanggung jawab..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nomor Telepon/WA <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <CountryCodeDropdown
+                    value={responsiblePartyModalData.countryCode}
+                    onChange={(code) => setResponsiblePartyModalData(prev => ({ ...prev, countryCode: code }))}
+                  />
+                  <input
+                    type="tel"
+                    value={responsiblePartyModalData.phone}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9+]/g, '');
+                      setResponsiblePartyModalData(prev => ({ ...prev, phone: value }));
+                    }}
+                    placeholder="8123456789"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Format: 8xxx (tanpa 0 di depan) atau 08xxx
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Alamat <span className="text-gray-500">(Opsional)</span>
+                </label>
+                <textarea
+                  value={responsiblePartyModalData.address}
+                  onChange={(e) => setResponsiblePartyModalData(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Masukkan alamat penanggung jawab..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowAddResponsiblePartyModal(false);
+                  setResponsiblePartyModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleSaveResponsibleParty}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                {editingResponsibleParty ? 'Update' : 'Tambah Penanggung Jawab'}
               </button>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiX, FiDownload, FiPrinter, FiInfo } from 'react-icons/fi';
+import { FiX, FiDownload, FiInfo } from 'react-icons/fi';
 import Button from '../Common/Button';
 import api from '../../services/api';
 import html2canvas from 'html2canvas';
@@ -123,7 +123,9 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
       // New format: use booking_details
       servicesList = bookingDetails.services;
       servicesSubtotal = bookingDetails.services.reduce((sum, service) => {
-        return sum + parseFloat(service.custom_price || 0);
+        const price = parseFloat(service.custom_price || 0);
+        const quantity = parseInt(service.quantity) || 1;
+        return sum + (price * quantity);
       }, 0);
       // Multiply by booking days
       servicesSubtotal = servicesSubtotal * bookingDays;
@@ -438,10 +440,6 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   // Update dpInputValue when invoice type changes
   useEffect(() => {
     if (invoiceType === 'dp') {
@@ -454,35 +452,32 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
   if (!isOpen || !booking) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-xl w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-xl font-bold text-gray-900">Generate Invoice</h2>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" icon={<FiDownload />} onClick={handleDownloadPDF}>
+        <div className="bg-white border-b border-gray-200 px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900">Generate Invoice</h2>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Button variant="secondary" size="sm" icon={<FiDownload />} onClick={handleDownloadPDF} className="hidden sm:flex px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm">
               PDF
             </Button>
-            <Button variant="secondary" size="sm" icon={<FiDownload />} onClick={handleDownloadJPEG}>
+            <Button variant="secondary" size="sm" icon={<FiDownload />} onClick={handleDownloadJPEG} className="hidden sm:flex px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm">
               JPEG
             </Button>
-            <Button variant="secondary" size="sm" icon={<FiPrinter />} onClick={handlePrint}>
-              Print
-            </Button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <FiX size={24} />
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
+              <FiX className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
             </button>
           </div>
         </div>
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-b">
+          <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-b">
             {/* Info Banner */}
-            <div className="bg-blue-100 border-l-4 border-blue-500 rounded-r-lg p-4">
-              <div className="flex items-start gap-3">
-                <FiInfo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-blue-800">
+            <div className="bg-blue-100 border-l-4 border-blue-500 rounded-r-lg p-3 sm:p-4">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <FiInfo className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs sm:text-sm text-blue-800">
                   <p className="font-semibold mb-1">Pilih jenis invoice di sini:</p>
                   <ul className="space-y-1 ml-4 list-disc">
                     <li><span className="font-semibold">Invoice DP</span> untuk pembayaran awal, atau <span className="font-semibold">Invoice Pelunasan</span> untuk sisa pembayaran, atau <span className="font-semibold">Invoice Penuh</span> untuk pembayaran langsung</li>
@@ -493,21 +488,21 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
             </div>
 
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Pilih Jenis Invoice</h3>
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Pilih Jenis Invoice</h3>
               
               {/* Status Info untuk DP */}
               {(booking.payment_status === 'DP' || booking.payment_status === 'partial') && (
-                <div className="mb-4 p-4 bg-orange-50 border-l-4 border-orange-500 rounded-r-lg">
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-orange-50 border-l-4 border-orange-500 rounded-r-lg">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div>
-                      <p className="text-sm font-semibold text-orange-800 mb-1">⚠️ Status: Down Payment (DP) - Invoice Pelunasan Saja</p>
-                      <p className="text-sm text-orange-700">
+                      <p className="text-xs sm:text-sm font-semibold text-orange-800 mb-1">⚠️ Status: Down Payment (DP) - Invoice Pelunasan Saja</p>
+                      <p className="text-xs sm:text-sm text-orange-700">
                         Sudah dibayar: <span className="font-bold">Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
                       </p>
-                      <p className="text-sm text-orange-700">
+                      <p className="text-xs sm:text-sm text-orange-700">
                         Sisa pembayaran: <span className="font-bold">Rp {Math.round(amounts.total - (booking.amount_paid || 0)).toLocaleString('id-ID')}</span>
                       </p>
                       <p className="text-xs text-orange-600 mt-1 italic">
@@ -518,7 +513,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                 </div>
               )}
 
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
                 {booking.payment_status === 'Lunas' || booking.payment_status === 'paid' 
                   ? '✓ Pembayaran sudah lunas - Invoice Penuh' 
                   : booking.payment_status === 'DP' || booking.payment_status === 'partial'
@@ -528,7 +523,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
               
               {/* Invoice Type Buttons */}
               <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-2 sm:gap-4">
                   {/* Invoice DP */}
                   <button
                     type="button"
@@ -539,7 +534,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                       booking.payment_status === 'DP' || 
                       booking.payment_status === 'partial'
                     }
-                    className={`relative flex flex-col items-center p-5 border-2 rounded-xl transition-all duration-200 ${
+                    className={`relative flex flex-col items-center p-2 sm:p-3 md:p-5 border-2 rounded-lg sm:rounded-xl transition-all duration-200 ${
                       invoiceType === 'dp' 
                         ? 'border-blue-500 bg-blue-50 shadow-lg scale-105' 
                         : (booking.payment_status === 'Lunas' || booking.payment_status === 'paid' || booking.payment_status === 'DP' || booking.payment_status === 'partial')
@@ -548,21 +543,24 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     }`}
                   >
                     {invoiceType === 'dp' && (
-                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                        <svg className="w-2 h-2 sm:w-3 sm:h-3 md:w-4 md:h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       </div>
                     )}
-                    <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mb-3">
-                      <span className="text-white font-bold text-lg">DP</span>
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mb-1 sm:mb-2 md:mb-3">
+                      <span className="text-white font-bold text-xs sm:text-sm md:text-lg">DP</span>
                     </div>
                     <div className="text-center">
-                      <div className="font-semibold text-gray-900 mb-1">Invoice DP</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="font-semibold text-gray-900 text-xs sm:text-sm md:text-base mb-0.5 sm:mb-1">Invoice DP</div>
+                      <div className="text-xs text-gray-500 hidden sm:block">
                         {(booking.payment_status === 'DP' || booking.payment_status === 'partial')
                           ? 'DP sudah dibuat'
                           : 'Pembayaran DP'}
+                      </div>
+                      <div className="text-xs text-gray-500 sm:hidden">
+                        DP
                       </div>
                     </div>
                   </button>
@@ -572,7 +570,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     type="button"
                     onClick={() => setInvoiceType('pelunasan')}
                     disabled={booking.payment_status === 'Lunas' || booking.payment_status === 'paid' || booking.payment_status === 'Belum Bayar' || booking.payment_status === 'unpaid'}
-                    className={`relative flex flex-col items-center p-5 border-2 rounded-xl transition-all duration-200 ${
+                    className={`relative flex flex-col items-center p-2 sm:p-3 md:p-5 border-2 rounded-lg sm:rounded-xl transition-all duration-200 ${
                       invoiceType === 'pelunasan' 
                         ? 'border-orange-500 bg-orange-50 shadow-lg scale-105' 
                         : (booking.payment_status === 'Lunas' || booking.payment_status === 'paid' || booking.payment_status === 'Belum Bayar' || booking.payment_status === 'unpaid')
@@ -581,20 +579,23 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     }`}
                   >
                     {invoiceType === 'pelunasan' && (
-                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                        <svg className="w-2 h-2 sm:w-3 sm:h-3 md:w-4 md:h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       </div>
                     )}
-                    <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center mb-3">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center mb-1 sm:mb-2 md:mb-3">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                     <div className="text-center">
-                      <div className="font-semibold text-gray-900 mb-1">Invoice Pelunasan</div>
-                      <div className="text-xs text-gray-500">Sisa pembayaran</div>
+                      <div className="font-semibold text-gray-900 text-xs sm:text-sm md:text-base mb-0.5 sm:mb-1">Invoice Pelunasan</div>
+                      <div className="text-xs text-gray-500 hidden sm:block">Sisa pembayaran</div>
+                      <div className="text-xs text-gray-500 sm:hidden">
+                        Pelunasan
+                      </div>
                     </div>
                   </button>
 
@@ -608,7 +609,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                       booking.payment_status === 'DP' || 
                       booking.payment_status === 'partial'
                     }
-                    className={`relative flex flex-col items-center p-5 border-2 rounded-xl transition-all duration-200 ${
+                    className={`relative flex flex-col items-center p-2 sm:p-3 md:p-5 border-2 rounded-lg sm:rounded-xl transition-all duration-200 ${
                       invoiceType === 'penuh' 
                         ? 'border-green-500 bg-green-50 shadow-lg scale-105' 
                         : (booking.payment_status === 'Lunas' || booking.payment_status === 'paid')
@@ -619,23 +620,28 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     }`}
                   >
                     {invoiceType === 'penuh' && (
-                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-green-500 rounded-full flex items-center justify-center">
+                        <svg className="w-2 h-2 sm:w-3 sm:h-3 md:w-4 md:h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       </div>
                     )}
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mb-3">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mb-1 sm:mb-2 md:mb-3">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                     <div className="text-center">
-                      <div className="font-semibold text-gray-900 mb-1">Invoice Penuh</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="font-semibold text-gray-900 text-xs sm:text-sm md:text-base mb-0.5 sm:mb-1">Invoice Penuh</div>
+                      <div className="text-xs text-gray-500 hidden sm:block">
                         {(booking.payment_status === 'DP' || booking.payment_status === 'partial')
                           ? 'Tidak tersedia untuk DP'
                           : 'Pembayaran langsung'}
+                      </div>
+                      <div className="text-xs text-gray-500 sm:hidden">
+                        {(booking.payment_status === 'DP' || booking.payment_status === 'partial')
+                          ? 'Tidak tersedia'
+                          : 'Penuh'}
                       </div>
                     </div>
                   </button>
@@ -643,16 +649,16 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                 
                 {/* DP Input Section */}
                 {invoiceType === 'dp' && (
-                  <div className="mt-4 p-5 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl border-2 border-yellow-200 shadow-sm">
-                    <label className="flex text-sm font-semibold text-gray-800 mb-3 items-center gap-2">
-                      <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                  <div className="mt-3 sm:mt-4 p-3 sm:p-5 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg sm:rounded-xl border-2 border-yellow-200 shadow-sm">
+                    <label className="flex text-xs sm:text-sm font-semibold text-gray-800 mb-2 sm:mb-3 items-center gap-2">
+                      <div className="w-5 h-5 sm:w-6 sm:h-6 bg-yellow-500 rounded-full flex items-center justify-center">
                         <span className="text-white text-xs font-bold">%</span>
                       </div>
                       Persentase Down Payment (DP)
                     </label>
                     
                     {/* Slider dan Input Persentase */}
-                    <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-2 sm:mb-3">
                       <input
                         type="range"
                         min="1"
@@ -672,19 +678,19 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                         }}
                       />
                       <div className="relative">
-                        <div className="w-24 px-4 py-2 text-2xl font-bold text-yellow-600 text-center bg-white rounded-lg border-2 border-yellow-300">
+                        <div className="w-20 sm:w-24 px-3 sm:px-4 py-1 sm:py-2 text-lg sm:text-2xl font-bold text-yellow-600 text-center bg-white rounded-lg border-2 border-yellow-300">
                           {Math.round(dpPercentage)}%
                         </div>
                       </div>
                     </div>
                     
                     {/* Input Nominal DP Manual */}
-                    <div className="mt-4 p-3 bg-white rounded-lg border-2 border-yellow-300">
-                      <label className="block text-xs font-semibold text-gray-700 mb-2">
+                    <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-white rounded-lg border-2 border-yellow-300">
+                      <label className="block text-xs font-semibold text-gray-700 mb-1 sm:mb-2">
                         Atau masukkan nominal DP langsung:
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
+                        <span className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm sm:text-base">Rp</span>
                         <input
                           type="text"
                           value={dpInputValue}
@@ -703,7 +709,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                             setDpPercentage(parseFloat(percentage.toFixed(2)));
                           }}
                           placeholder="0"
-                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 font-semibold text-gray-700"
+                          className="w-full pl-8 sm:pl-10 pr-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 font-semibold text-gray-700 text-sm sm:text-base"
                         />
                       </div>
                       <p className="text-xs text-gray-500 mt-1 italic">
@@ -741,10 +747,10 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
 
                 {/* Summary Box */}
                 {invoiceType && (
-                  <div className="mt-4 p-5 bg-white rounded-xl border-2 border-gray-200 shadow-lg">
-                    <h4 className="flex font-bold text-gray-900 mb-4 items-center gap-2 text-lg">
-                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="mt-2 sm:mt-3 md:mt-4 p-2 sm:p-3 md:p-5 bg-white rounded-lg sm:rounded-xl border-2 border-gray-200 shadow-lg">
+                    <h4 className="flex font-bold text-gray-900 mb-2 sm:mb-3 md:mb-4 items-center gap-1.5 sm:gap-2 text-sm sm:text-base md:text-lg">
+                      <div className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                        <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                         </svg>
                       </div>
@@ -752,76 +758,76 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     </h4>
                     
                     {invoiceType === 'dp' && (
-                      <div className="space-y-3">
+                      <div className="space-y-2 sm:space-y-3">
                         {(booking.payment_status === 'DP' || booking.payment_status === 'partial') && booking.amount_paid > 0 && (
-                          <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+                          <div className="flex justify-between items-center p-2 sm:p-3 bg-green-50 rounded-lg border border-green-200">
                             <div>
-                              <span className="text-sm text-gray-700">Sudah Dibayar</span>
-                              <span className="text-xs text-green-600 ml-2 font-semibold">
+                              <span className="text-xs sm:text-sm text-gray-700">Sudah Dibayar</span>
+                              <span className="text-xs text-green-600 ml-1 sm:ml-2 font-semibold">
                                 ({((booking.amount_paid / amounts.total) * 100).toFixed(2).replace('.', ',')}%)
                               </span>
                             </div>
-                            <span className="text-lg font-bold text-green-700">Rp {(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
+                            <span className="text-sm sm:text-base md:text-lg font-bold text-green-700">Rp {(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
                           </div>
                         )}
-                        <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <div className="flex justify-between items-center p-2 sm:p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                           <div>
-                            <span className="text-sm text-gray-700">Down Payment ({dpPercentage.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%)</span>
+                            <span className="text-xs sm:text-sm text-gray-700">Down Payment ({dpPercentage.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%)</span>
                             <p className="text-xs text-yellow-600 italic">
                               {(booking.payment_status === 'DP' || booking.payment_status === 'partial') 
                                 ? 'Update nominal DP' 
                                 : 'DP yang akan dibayar'}
                             </p>
                           </div>
-                          <span className="text-lg font-bold text-yellow-700">Rp {Math.round(amounts.dp).toLocaleString('id-ID')}</span>
+                          <span className="text-sm sm:text-base md:text-lg font-bold text-yellow-700">Rp {Math.round(amounts.dp).toLocaleString('id-ID')}</span>
                         </div>
-                        <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                          <span className="text-sm text-gray-700">Sisa Setelah DP</span>
-                          <span className="text-lg font-bold text-gray-700">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
+                        <div className="flex justify-between items-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+                          <span className="text-xs sm:text-sm text-gray-700">Sisa Setelah DP</span>
+                          <span className="text-sm sm:text-base md:text-lg font-bold text-gray-700">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
                         </div>
-                        <div className="pt-3 border-t-2 border-gray-200">
+                        <div className="pt-2 sm:pt-3 border-t-2 border-gray-200">
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-600">Total Keseluruhan</span>
-                            <span className="text-xl font-bold text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                            <span className="text-xs sm:text-sm font-medium text-gray-600">Total Keseluruhan</span>
+                            <span className="text-base sm:text-lg md:text-xl font-bold text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
                           </div>
                         </div>
                       </div>
                     )}
                     
                     {invoiceType === 'pelunasan' && (
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+                      <div className="space-y-2 sm:space-y-3">
+                        <div className="flex justify-between items-center p-2 sm:p-3 bg-green-50 rounded-lg border border-green-200">
                           <div>
-                            <span className="text-sm text-gray-700">Sudah Dibayar</span>
-                            <span className="text-xs text-green-600 ml-2 font-semibold">
+                            <span className="text-xs sm:text-sm text-gray-700">Sudah Dibayar</span>
+                            <span className="text-xs text-green-600 ml-1 sm:ml-2 font-semibold">
                               ({((booking.amount_paid / amounts.total) * 100).toFixed(2).replace('.', ',')}%)
                             </span>
                           </div>
-                          <span className="text-lg font-bold text-green-700">Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
+                          <span className="text-sm sm:text-base md:text-lg font-bold text-green-700">Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
                         </div>
-                        <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
+                        <div className="flex justify-between items-center p-2 sm:p-3 bg-red-50 rounded-lg border border-red-200">
                           <div>
-                            <span className="text-sm text-gray-700">Sisa Pembayaran</span>
-                            <span className="text-xs text-red-600 ml-2 font-semibold">
+                            <span className="text-xs sm:text-sm text-gray-700">Sisa Pembayaran</span>
+                            <span className="text-xs text-red-600 ml-1 sm:ml-2 font-semibold">
                               ({((amounts.remaining / amounts.total) * 100).toFixed(2).replace('.', ',')}%)
                             </span>
                           </div>
-                          <span className="text-lg font-bold text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
+                          <span className="text-sm sm:text-base md:text-lg font-bold text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
                         </div>
-                        <div className="pt-3 border-t-2 border-gray-200">
+                        <div className="pt-2 sm:pt-3 border-t-2 border-gray-200">
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-600">Total Keseluruhan</span>
-                            <span className="text-xl font-bold text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                            <span className="text-xs sm:text-sm font-medium text-gray-600">Total Keseluruhan</span>
+                            <span className="text-base sm:text-lg md:text-xl font-bold text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
                           </div>
                         </div>
                       </div>
                     )}
                     
                     {invoiceType === 'penuh' && (
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-                          <span className="text-sm font-medium text-gray-700">Total Pembayaran</span>
-                          <span className="text-2xl font-bold text-green-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                      <div className="space-y-2 sm:space-y-3">
+                        <div className="flex justify-between items-center p-2 sm:p-3 md:p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                          <span className="text-xs sm:text-sm font-medium text-gray-700">Total Pembayaran</span>
+                          <span className="text-lg sm:text-xl md:text-2xl font-bold text-green-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
                         </div>
                         <div className="text-xs text-gray-500 text-center">
                           {booking.payment_status === 'Lunas' || booking.payment_status === 'paid' 
@@ -835,10 +841,10 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
               </div>
 
               {/* Invoice Details */}
-              <div className="grid grid-cols-3 gap-4 mt-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4 sm:mt-6">
                 <div>
-                  <label className="flex text-sm font-semibold text-gray-700 mb-2 items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <label className="flex text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-2 items-center gap-2">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                     </svg>
                     Nomor Invoice
@@ -847,14 +853,14 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     type="text"
                     value={invoiceNumber}
                     onChange={(e) => setInvoiceNumber(e.target.value)}
-                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white font-mono text-sm"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white font-mono text-sm"
                     placeholder="INV-xxxxx"
                   />
                 </div>
 
                 <div>
-                  <label className="flex text-sm font-semibold text-gray-700 mb-2 items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <label className="flex text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-2 items-center gap-2">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                     Tanggal Invoice
@@ -863,13 +869,13 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     type="date"
                     value={invoiceDate}
                     onChange={(e) => setInvoiceDate(e.target.value)}
-                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="flex text-sm font-semibold text-gray-700 mb-2 items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <label className="flex text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-2 items-center gap-2">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     Jatuh Tempo
@@ -878,7 +884,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     type="date"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                   />
                 </div>
               </div>
@@ -886,56 +892,56 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
           </div>
 
           {/* Invoice Preview - Visible in Modal */}
-          <div className="p-6 bg-gray-50">
-            <div className="border border-gray-300 rounded-lg p-8 bg-white shadow-lg max-w-4xl mx-auto" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+          <div className="p-2 sm:p-3 md:p-6 bg-gray-50">
+            <div className="border border-gray-300 rounded-lg p-2 sm:p-4 md:p-8 bg-white shadow-lg max-w-4xl mx-auto" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
               {/* Company Info */}
-              <div className="flex justify-between items-start mb-8 pb-6 border-b-2 border-gray-200">
+              <div className="flex justify-between items-start mb-4 sm:mb-6 md:mb-8 pb-3 sm:pb-4 md:pb-6 border-b-2 border-gray-200">
                 <div>
                   {companySettings?.company_logo_url && (
-                    <img src={companySettings.company_logo_url} alt="Company Logo" className="h-16 mb-3 object-contain" />
+                    <img src={companySettings.company_logo_url} alt="Company Logo" className="h-8 sm:h-12 md:h-16 mb-2 sm:mb-3 object-contain" />
                   )}
-                  <h1 className="text-3xl font-bold text-gray-900">{companySettings?.company_name || 'Nama Perusahaan'}</h1>
-                  {companySettings?.company_address && <p className="text-sm text-gray-600 mt-2">{companySettings.company_address}</p>}
-                  {companySettings?.company_phone && <p className="text-sm text-gray-600">Kontak: {companySettings.company_phone}</p>}
-                  {companySettings?.company_email && <p className="text-sm text-gray-600">Email: {companySettings.company_email}</p>}
+                  <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900">{companySettings?.company_name || 'Nama Perusahaan'}</h1>
+                  {companySettings?.company_address && <p className="text-xs sm:text-sm text-gray-600 mt-1">{companySettings.company_address}</p>}
+                  {companySettings?.company_phone && <p className="text-xs sm:text-sm text-gray-600">Kontak: {companySettings.company_phone}</p>}
+                  {companySettings?.company_email && <p className="text-xs sm:text-sm text-gray-600">Email: {companySettings.company_email}</p>}
                 </div>
                 <div className="text-right">
-                  <h2 className="text-3xl font-bold text-gray-900">INVOICE</h2>
-                  <p className="text-sm text-gray-600 mt-2">{invoiceNumber}</p>
+                  <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900">INVOICE</h2>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1 sm:mt-2">{invoiceNumber}</p>
                 </div>
               </div>
 
               {/* Bill To */}
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Bill To:</h3>
-                <p className="font-semibold text-gray-900">{booking.client_name}</p>
-                <p className="text-sm text-gray-600">{formatPhoneNumber(booking.contact)}</p>
+              <div className="mb-3 sm:mb-4 md:mb-6">
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-2">Bill To:</h3>
+                <p className="font-semibold text-gray-900 text-sm sm:text-base">{booking.client_name}</p>
+                <p className="text-xs sm:text-sm text-gray-600">{formatPhoneNumber(booking.contact)}</p>
                 {(booking.address || booking.location) && (
-                  <p className="text-sm text-gray-600 mt-1">{booking.address || booking.location}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{booking.address || booking.location}</p>
                 )}
               </div>
 
               {/* Invoice Dates */}
-              <div className="mb-6 grid grid-cols-2 gap-4">
+              <div className="mb-3 sm:mb-4 md:mb-6 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4">
                 <div>
-                  <p className="text-sm text-gray-600">Tanggal Invoice: {new Date(invoiceDate).toLocaleDateString('id-ID')}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Tanggal Invoice: {new Date(invoiceDate).toLocaleDateString('id-ID')}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Jatuh Tempo: {new Date(dueDate).toLocaleDateString('id-ID')}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Jatuh Tempo: {new Date(dueDate).toLocaleDateString('id-ID')}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Tanggal Layanan: {new Date(booking.booking_date).toLocaleDateString('id-ID')}</p>
+                <div className="sm:col-span-2">
+                  <p className="text-xs sm:text-sm text-gray-600">Tanggal Layanan: {new Date(booking.booking_date).toLocaleDateString('id-ID')}</p>
                 </div>
               </div>
 
               {/* Invoice Items Table */}
-              <table className="w-full mb-6" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+              <table className="w-full mb-3 sm:mb-4 md:mb-6" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Deskripsi Layanan</th>
-                    <th className="text-center py-2 px-3 text-sm font-semibold text-gray-700">Tanggal & Waktu Mulai</th>
-                    <th className="text-center py-2 px-3 text-sm font-semibold text-gray-700">Tanggal & Waktu Selesai</th>
-                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">Jumlah</th>
+                    <th className="text-left py-1 sm:py-2 px-2 sm:px-3 text-xs sm:text-sm font-semibold text-gray-700">Deskripsi Layanan</th>
+                    <th className="text-center py-1 sm:py-2 px-2 sm:px-3 text-xs sm:text-sm font-semibold text-gray-700">Tanggal & Waktu Mulai</th>
+                    <th className="text-center py-1 sm:py-2 px-2 sm:px-3 text-xs sm:text-sm font-semibold text-gray-700">Tanggal & Waktu Selesai</th>
+                    <th className="text-right py-1 sm:py-2 px-2 sm:px-3 text-xs sm:text-sm font-semibold text-gray-700">Jumlah</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -963,15 +969,16 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                       
                       return (
                         <tr key={index} className="border-b">
-                          <td className="py-3 px-3 text-sm text-gray-900">
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-900">
                             {service.service_name}
-                            {bookingDays > 1 && <span className="ml-2 text-blue-600 font-semibold">x{bookingDays}</span>}
+                            {service.quantity > 1 && <span className="ml-1 sm:ml-2 text-green-600 font-semibold text-xs">(x{service.quantity})</span>}
+                            {bookingDays > 1 && <span className="ml-1 sm:ml-2 text-blue-600 font-semibold text-xs">x{bookingDays} hari</span>}
                           </td>
-                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-600 text-center">
                             {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
                             <span className="font-semibold">{startTime}</span>
                           </td>
-                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-600 text-center">
                             {hasEndDate ? (
                               <>
                                 {new Date(details.booking_date_end).toLocaleDateString('id-ID')}<br/>
@@ -984,7 +991,10 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                               </>
                             )}
                           </td>
-                          <td className="py-3 px-3 text-sm text-gray-900 text-right">Rp {Math.round(service.custom_price).toLocaleString('id-ID')}</td>
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-900 text-right">
+                            Rp {Math.round((service.custom_price || 0) * (service.quantity || 1)).toLocaleString('id-ID')}
+                            {service.quantity > 1 && <div className="text-xs text-gray-500 mt-1">({service.quantity} x Rp {Math.round(service.custom_price || 0).toLocaleString('id-ID')})</div>}
+                          </td>
                         </tr>
                       );
                     })
@@ -1012,15 +1022,15 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                       
                       return (
                         <tr key={index} className="border-b">
-                          <td className="py-3 px-3 text-sm text-gray-900">
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-900">
                             {service}
-                            {bookingDays > 1 && <span className="ml-2 text-blue-600 font-semibold">x{bookingDays}</span>}
+                            {bookingDays > 1 && <span className="ml-1 sm:ml-2 text-blue-600 font-semibold text-xs">x{bookingDays}</span>}
                           </td>
-                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-600 text-center">
                             {new Date(booking.booking_date).toLocaleDateString('id-ID')}<br/>
                             <span className="font-semibold">{startTime}</span>
                           </td>
-                          <td className="py-3 px-3 text-sm text-gray-600 text-center">
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-600 text-center">
                             {hasEndDate ? (
                               <>
                                 {new Date(details.booking_date_end).toLocaleDateString('id-ID')}<br/>
@@ -1033,7 +1043,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                               </>
                             )}
                           </td>
-                          <td className="py-3 px-3 text-sm text-gray-900 text-right">Rp {Math.round(amounts.subtotal).toLocaleString('id-ID')}</td>
+                          <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-900 text-right">Rp {Math.round(amounts.subtotal).toLocaleString('id-ID')}</td>
                         </tr>
                       );
                     })
@@ -1042,27 +1052,27 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                   {/* Additional Fees */}
                   {amounts.additional_fees && amounts.additional_fees.length > 0 && amounts.additional_fees.map((fee, index) => (
                     <tr key={`fee-${index}`} className="border-b">
-                      <td className="py-3 px-3 text-sm text-gray-900">{fee.description}</td>
-                      <td className="py-3 px-3 text-sm text-gray-600 text-center">-</td>
-                      <td className="py-3 px-3 text-sm text-gray-600 text-center">-</td>
-                      <td className="py-3 px-3 text-sm text-gray-900 text-right">Rp {Math.round(fee.amount).toLocaleString('id-ID')}</td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-900">{fee.description}</td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-600 text-center">-</td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-600 text-center">-</td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm text-gray-900 text-right">Rp {Math.round(fee.amount).toLocaleString('id-ID')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
               {/* Totals */}
-              <div className="flex justify-end mb-6">
-                <div className="w-72 space-y-2">
+              <div className="flex justify-end mb-3 sm:mb-4 md:mb-6">
+                <div className="w-48 sm:w-56 md:w-64 lg:w-72 space-y-1 sm:space-y-2">
                   {/* Services Subtotal */}
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-xs sm:text-sm">
                     <span className="text-gray-600">Subtotal Layanan:</span>
                     <span className="font-semibold">Rp {Math.round(amounts.subtotal).toLocaleString('id-ID')}</span>
                   </div>
                   
                   {/* Discount */}
                   {amounts.discount > 0 && (
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between text-xs sm:text-sm">
                       <span className="text-gray-600">Diskon:</span>
                       <span className="font-semibold text-green-600">-Rp {Math.round(amounts.discount).toLocaleString('id-ID')}</span>
                     </div>
@@ -1070,7 +1080,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                   
                   {/* Subtotal after discount (before tax) */}
                   {amounts.discount > 0 && (
-                    <div className="flex justify-between text-sm border-t pt-2">
+                    <div className="flex justify-between text-xs sm:text-sm border-t pt-1 sm:pt-2">
                       <span className="text-gray-600">Subtotal setelah Diskon:</span>
                       <span className="font-semibold">Rp {Math.round(amounts.subtotalAfterDiscount).toLocaleString('id-ID')}</span>
                     </div>
@@ -1078,7 +1088,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                   
                   {/* Tax */}
                   {amounts.tax_percentage > 0 && (
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between text-xs sm:text-sm">
                       <span className="text-gray-600">PPN ({amounts.tax_percentage}%):</span>
                       <span className="font-semibold">Rp {Math.round(amounts.tax).toLocaleString('id-ID')}</span>
                     </div>
@@ -1086,14 +1096,14 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                   
                   {/* Additional Fees Total */}
                   {amounts.additionalFeesTotal > 0 && (
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between text-xs sm:text-sm">
                       <span className="text-gray-600">Total Biaya Tambahan:</span>
                       <span className="font-semibold">Rp {Math.round(amounts.additionalFeesTotal).toLocaleString('id-ID')}</span>
                     </div>
                   )}
                   
                   {/* Grand Total */}
-                  <div className="flex justify-between text-base font-bold border-t-2 pt-2 mt-2">
+                  <div className="flex justify-between text-sm sm:text-base font-bold border-t-2 pt-1 sm:pt-2 mt-1 sm:mt-2">
                     <span className="text-gray-900">TOTAL KESELURUHAN:</span>
                     <span className="text-blue-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
                   </div>
@@ -1101,12 +1111,12 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                   {/* Payment Information */}
                   {invoiceType === 'dp' && (
                     <>
-                      <div className="border-t pt-2 mt-2"></div>
-                      <div className="flex justify-between text-sm bg-orange-50 p-2 rounded">
+                      <div className="border-t pt-1 sm:pt-2 mt-1 sm:mt-2"></div>
+                      <div className="flex justify-between text-xs sm:text-sm bg-orange-50 p-1 sm:p-2 rounded">
                         <span className="text-gray-700 font-medium">DP yang harus dibayar:</span>
                         <span className="font-bold text-orange-600">Rp {Math.round(amounts.dp).toLocaleString('id-ID')}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-gray-600">Sisa Pembayaran:</span>
                         <span className="font-semibold text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
                       </div>
@@ -1114,23 +1124,23 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                   )}
                   {invoiceType === 'pelunasan' && (
                     <>
-                      <div className="border-t pt-2 mt-2"></div>
-                      <div className="flex justify-between text-sm text-gray-500 italic">
+                      <div className="border-t pt-1 sm:pt-2 mt-1 sm:mt-2"></div>
+                      <div className="flex justify-between text-xs sm:text-sm text-gray-500 italic">
                         <span>Sudah Dibayar (DP):</span>
                         <span>-Rp {Math.round(booking.amount_paid || 0).toLocaleString('id-ID')}</span>
                       </div>
-                      <div className="flex justify-between bg-red-50 p-2 rounded">
-                        <span className="font-bold text-gray-900">Sisa yang Harus Dibayar:</span>
-                        <span className="font-bold text-lg text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
+                      <div className="flex justify-between bg-red-50 p-1 sm:p-2 rounded">
+                        <span className="font-bold text-gray-900 text-xs sm:text-sm">Sisa yang Harus Dibayar:</span>
+                        <span className="font-bold text-sm sm:text-base md:text-lg text-red-600">Rp {Math.round(amounts.remaining).toLocaleString('id-ID')}</span>
                       </div>
                     </>
                   )}
                   {invoiceType === 'penuh' && (
                     <>
-                      <div className="border-t pt-2 mt-2"></div>
-                      <div className="flex justify-between bg-green-50 p-2 rounded">
-                        <span className="font-bold text-gray-900">Total Pembayaran Penuh:</span>
-                        <span className="font-bold text-lg text-green-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
+                      <div className="border-t pt-1 sm:pt-2 mt-1 sm:mt-2"></div>
+                      <div className="flex justify-between bg-green-50 p-1 sm:p-2 rounded">
+                        <span className="font-bold text-gray-900 text-xs sm:text-sm">Total Pembayaran Penuh:</span>
+                        <span className="font-bold text-sm sm:text-base md:text-lg text-green-600">Rp {Math.round(amounts.total).toLocaleString('id-ID')}</span>
                       </div>
                     </>
                   )}
@@ -1139,11 +1149,11 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
 
               {/* Payment Info - Ultra Compact */}
               {companySettings?.bank_name && (
-                <div className="border-t pt-4">
-                  <div className="bg-gray-50 border border-gray-300 rounded p-2 mb-2">
-                    <h3 className="text-xs font-bold text-gray-900 mb-1.5">Informasi Pembayaran</h3>
+                <div className="border-t pt-2 sm:pt-3 md:pt-4">
+                  <div className="bg-gray-50 border border-gray-300 rounded p-1.5 sm:p-2 mb-1 sm:mb-2">
+                    <h3 className="text-xs font-bold text-gray-900 mb-1 sm:mb-1.5">Informasi Pembayaran</h3>
                     
-                    <div className="space-y-0.5 text-xs mb-2">
+                    <div className="space-y-0.5 text-xs mb-1 sm:mb-2">
                       <div>
                         <span className="text-gray-700">Status: </span>
                         <span className="font-bold text-gray-900">
@@ -1160,9 +1170,9 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     </div>
 
                     {/* Sisa Pembayaran Box - Orange Highlight Compact */}
-                    <div className="bg-orange-100 border border-orange-400 rounded p-2 text-center mb-2">
+                    <div className="bg-orange-100 border border-orange-400 rounded p-1 sm:p-2 text-center mb-1 sm:mb-2">
                       <p className="text-xs font-medium text-orange-900">Sisa pembayaran yang harus ditransfer</p>
-                      <p className="text-lg font-bold text-orange-600">
+                      <p className="text-sm sm:text-base md:text-lg font-bold text-orange-600">
                         Rp {Math.round(getInvoiceAmount()).toLocaleString('id-ID')}
                       </p>
                     </div>
@@ -1170,9 +1180,9 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                     {/* Transfer Bank Section - Horizontal Grid Layout */}
                     <div>
                       <h4 className="text-xs font-bold text-gray-900 mb-1">Transfer Bank:</h4>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2">
                         {companySettings.bank_name && (
-                          <div className="bg-white border border-gray-300 rounded p-1.5">
+                          <div className="bg-white border border-gray-300 rounded p-1 sm:p-1.5">
                             <div className="text-xs">
                               <span className="text-gray-700">Bank: </span>
                               <span className="font-bold text-gray-900">{companySettings.bank_name}</span>
@@ -1189,7 +1199,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                         )}
                         
                         {companySettings.bank_name_alt && (
-                          <div className="bg-white border border-gray-300 rounded p-1.5">
+                          <div className="bg-white border border-gray-300 rounded p-1 sm:p-1.5">
                             <div className="text-xs">
                               <span className="text-gray-700">Bank: </span>
                               <span className="font-bold text-gray-900">{companySettings.bank_name_alt}</span>
@@ -1209,7 +1219,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                   </div>
 
                   {/* Instructions - Ultra Compact */}
-                  <div className="bg-orange-50 border border-orange-400 rounded p-1.5 mb-1">
+                  <div className="bg-orange-50 border border-orange-400 rounded p-1 sm:p-1.5 mb-1">
                     <h4 className="text-xs font-bold text-gray-900">Instruksi Pembayaran:</h4>
                     <p className="text-xs text-gray-800">
                       Silakan transfer ke rekening di atas dan kirimkan bukti transfer untuk konfirmasi pembayaran.
@@ -1222,8 +1232,8 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
         </div>
 
         {/* Footer */}
-        <div className="bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3 flex-shrink-0">
-          <Button variant="secondary" onClick={onClose}>
+        <div className="bg-white border-t border-gray-200 px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex justify-end gap-2 sm:gap-3 flex-shrink-0">
+          <Button variant="secondary" onClick={onClose} className="px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base">
             Tutup
           </Button>
           {invoiceType && (
@@ -1231,6 +1241,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
               variant="primary" 
               onClick={handleSaveInvoice}
               disabled={isSaving}
+              className="px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base"
             >
               {isSaving ? 'Menyimpan...' : 'Save Invoice'}
             </Button>
@@ -1353,7 +1364,8 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                         <td className="py-2 px-3 text-xs">
                           <div className="font-semibold text-gray-900">
                             {service.service_name}
-                            {bookingDays > 1 && <span className="ml-2 text-blue-600 font-bold">x{bookingDays}</span>}
+                            {service.quantity > 1 && <span className="ml-2 text-green-600 font-bold">(x{service.quantity})</span>}
+                            {bookingDays > 1 && <span className="ml-2 text-blue-600 font-bold">x{bookingDays} hari</span>}
                           </div>
                           <div className="text-xs text-gray-500">{service.description || ''}</div>
                         </td>
@@ -1375,7 +1387,8 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                           )}
                         </td>
                         <td className="py-2 px-3 text-xs font-semibold text-gray-900 text-right">
-                          Rp {Math.round(service.custom_price).toLocaleString('id-ID')}
+                          Rp {Math.round((service.custom_price || 0) * (service.quantity || 1)).toLocaleString('id-ID')}
+                          {service.quantity > 1 && <div className="text-xs text-gray-500 mt-1">({service.quantity} x Rp {Math.round(service.custom_price || 0).toLocaleString('id-ID')})</div>}
                         </td>
                       </tr>
                     );
@@ -1551,19 +1564,19 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
 
       {/* Download Modal */}
       {showDownloadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Download Invoice</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-2xl w-full max-w-md p-4 sm:p-6">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Download Invoice</h3>
             
-            <div className="mb-4">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <div className="mb-3 sm:mb-4">
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-2">
                 Nama File:
               </label>
               <input
                 type="text"
                 value={fileName}
                 onChange={(e) => setFileName(e.target.value)}
-                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base"
                 placeholder="Masukkan nama file"
               />
               <p className="text-xs text-gray-500 mt-1">
@@ -1571,14 +1584,14 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
               </p>
             </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <div className="mb-4 sm:mb-6">
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                 Format:
               </label>
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3">
                 <button
                   onClick={() => setDownloadFormat('pdf')}
-                  className={`flex-1 py-2.5 px-4 rounded-lg border-2 font-semibold transition-all ${
+                  className={`flex-1 py-2 sm:py-2.5 px-3 sm:px-4 rounded-lg border-2 font-semibold transition-all text-sm sm:text-base ${
                     downloadFormat === 'pdf'
                       ? 'bg-blue-500 border-blue-500 text-white'
                       : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
@@ -1588,7 +1601,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
                 </button>
                 <button
                   onClick={() => setDownloadFormat('jpeg')}
-                  className={`flex-1 py-2.5 px-4 rounded-lg border-2 font-semibold transition-all ${
+                  className={`flex-1 py-2 sm:py-2.5 px-3 sm:px-4 rounded-lg border-2 font-semibold transition-all text-sm sm:text-base ${
                     downloadFormat === 'jpeg'
                       ? 'bg-blue-500 border-blue-500 text-white'
                       : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
@@ -1599,18 +1612,18 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Button
                 variant="secondary"
                 onClick={() => setShowDownloadModal(false)}
-                className="flex-1"
+                className="flex-1 px-4 py-2 sm:py-2.5 text-sm sm:text-base"
               >
                 Batal
               </Button>
               <Button
                 variant="primary"
                 onClick={executeDownload}
-                className="flex-1"
+                className="flex-1 px-4 py-2 sm:py-2.5 text-sm sm:text-base"
               >
                 Download
               </Button>

@@ -30,7 +30,6 @@ const BackupDataPage = () => {
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importType, setImportType] = useState('replace'); // 'replace' or 'add'
   const [importFile, setImportFile] = useState(null);
-  const [exportFileFormat, setExportFileFormat] = useState('xlsx'); // 'xlsx' or 'csv'
   const [exportFileName, setExportFileName] = useState('');
   const [importData, setImportData] = useState(null);
   const [importSelection, setImportSelection] = useState({});
@@ -42,6 +41,8 @@ const BackupDataPage = () => {
     companySettings: true,
     clients: true,
     services: true,
+    responsibleParties: true,
+    serviceResponsibleParties: true,
     bookingsAndPayments: true, // Gabung booking & payments
     expenses: true,
     expenseCategories: true
@@ -51,6 +52,8 @@ const BackupDataPage = () => {
   const [allData, setAllData] = useState({
     clients: [],
     services: [],
+    responsibleParties: [],
+    serviceResponsibleParties: [],
     bookings: [],
     payments: [],
     expenses: [],
@@ -61,6 +64,8 @@ const BackupDataPage = () => {
   const [selectedIds, setSelectedIds] = useState({
     clients: [],
     services: [],
+    responsibleParties: [],
+    serviceResponsibleParties: [],
     bookings: [],
     payments: [],
     expenses: [],
@@ -71,16 +76,27 @@ const BackupDataPage = () => {
   const [expandedCategories, setExpandedCategories] = useState({
     clients: false,
     services: false,
+    responsibleParties: false,
+    serviceResponsibleParties: false,
     bookings: false,
     payments: false,
     expenses: false,
-    expenseCategories: false
+    expenseCategories: false,
+    importClients: false,
+    importServices: false,
+    importResponsibleParties: false,
+    importServiceResponsibleParties: false,
+    importBookings: false,
+    importExpenses: false,
+    importCategories: false
   });
 
   // Search state for each category
   const [searchTerms, setSearchTerms] = useState({
     clients: '',
     services: '',
+    responsibleParties: '',
+    serviceResponsibleParties: '',
     bookings: '',
     payments: '',
     expenses: '',
@@ -91,6 +107,8 @@ const BackupDataPage = () => {
   const [importSearchTerms, setImportSearchTerms] = useState({
     clients: '',
     services: '',
+    responsibleParties: '',
+    serviceResponsibleParties: '',
     bookings: '',
     expenses: '',
     expenseCategories: ''
@@ -100,7 +118,7 @@ const BackupDataPage = () => {
     fetchDataStats();
   }, []);
 
-    const fetchDataStats = async () => {
+  const fetchDataStats = async () => {
     try {
       const response = await api.get('/backup/stats');
       if (response.data.success && response.data.data) {
@@ -115,9 +133,11 @@ const BackupDataPage = () => {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [clientsRes, servicesRes, bookingsRes, paymentsRes, expensesRes, categoriesRes] = await Promise.all([
+      const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, bookingsRes, paymentsRes, expensesRes, categoriesRes] = await Promise.all([
         api.get('/clients'),
         api.get('/services'),
+        api.get('/user/responsible-parties'),
+        api.get('/user/service-responsible-parties'),
         api.get('/bookings'),
         api.get('/payments'),
         api.get('/expenses'),
@@ -127,30 +147,63 @@ const BackupDataPage = () => {
       console.log('📊 Fetched Data:', {
         clients: clientsRes.data.length,
         services: servicesRes.data.length,
+        responsibleParties: responsiblePartiesRes.data?.data?.length || 0,
+        serviceResponsibleParties: serviceResponsiblePartiesRes.data?.data?.length || 0,
         bookings: bookingsRes.data.length,
         payments: paymentsRes.data.length,
         expenses: expensesRes.data.length,
         expenseCategories: categoriesRes.data.length
       });
 
+      // Debug responsible parties response
+      console.log('🔍 Responsible Parties API Response:', {
+        status: responsiblePartiesRes.status,
+        data: responsiblePartiesRes.data,
+        dataType: typeof responsiblePartiesRes.data,
+        hasData: !!responsiblePartiesRes.data,
+        dataKeys: responsiblePartiesRes.data ? Object.keys(responsiblePartiesRes.data) : [],
+        dataData: responsiblePartiesRes.data?.data,
+        dataDataType: typeof responsiblePartiesRes.data?.data,
+        dataDataLength: responsiblePartiesRes.data?.data?.length
+      });
+
       setAllData({
         clients: clientsRes.data,
         services: servicesRes.data,
+        responsibleParties: responsiblePartiesRes.data?.data || [],
+        serviceResponsibleParties: serviceResponsiblePartiesRes.data?.data || [],
         bookings: bookingsRes.data,
         payments: paymentsRes.data,
         expenses: expensesRes.data,
         expenseCategories: categoriesRes.data
       });
 
-      // Initially select all IDs
+      // Initially select all IDs based on exportSelection
+      const responsiblePartiesData = responsiblePartiesRes.data?.data || [];
+      const serviceResponsiblePartiesData = serviceResponsiblePartiesRes.data?.data || [];
+      
       const selectedIdsObj = {
-        clients: clientsRes.data.map(item => item.id),
-        services: servicesRes.data.map(item => item.id),
-        bookings: bookingsRes.data.map(item => item.id),
-        payments: paymentsRes.data.map(item => item.id),
-        expenses: expensesRes.data.map(item => item.id),
-        expenseCategories: categoriesRes.data.map(item => item.id)
+        clients: exportSelection.clients ? clientsRes.data.map(item => item.id) : [],
+        services: exportSelection.services ? servicesRes.data.map(item => item.id) : [],
+        responsibleParties: exportSelection.responsibleParties ? responsiblePartiesData.map(item => item.id) : [],
+        serviceResponsibleParties: exportSelection.serviceResponsibleParties ? serviceResponsiblePartiesData.map(item => item.id) : [],
+        bookings: exportSelection.bookingsAndPayments ? bookingsRes.data.map(item => item.id) : [],
+        payments: exportSelection.bookingsAndPayments ? paymentsRes.data.map(item => item.id) : [],
+        expenses: exportSelection.expenses ? expensesRes.data.map(item => item.id) : [],
+        expenseCategories: exportSelection.expenseCategories ? categoriesRes.data.map(item => item.id) : []
       };
+      
+      console.log('📋 Initial selectedIds based on exportSelection:', {
+        responsibleParties: selectedIdsObj.responsibleParties,
+        exportSelection_responsibleParties: exportSelection.responsibleParties,
+        responsiblePartiesData: responsiblePartiesRes.data?.data
+      });
+      
+      console.log('🔄 [fetchAllData] Setting selectedIds for responsibleParties:', {
+        selectedIdsObj_responsibleParties: selectedIdsObj.responsibleParties,
+        responsiblePartiesData_length: responsiblePartiesData.length,
+        exportSelection_responsibleParties: exportSelection.responsibleParties
+      });
       
       setSelectedIds(selectedIdsObj);
 
@@ -171,9 +224,8 @@ const BackupDataPage = () => {
     }, 5000);
   };
 
-  // Export to Excel/CSV - Show modal first
-  const handleShowExportFileModal = (format) => {
-    setExportFileFormat(format);
+  // Export to Excel - Show modal first
+  const handleShowExportFileModal = () => {
     // Set default filename dengan tanggal
     const dateStr = new Date().toISOString().split('T')[0];
     setExportFileName(`backup_${dateStr}`);
@@ -187,7 +239,49 @@ const BackupDataPage = () => {
       setShowExportFileModal(false);
       
       const timestamp = Date.now();
-      const response = await api.get(`/backup/export/${exportFileFormat}?t=${timestamp}`, {
+      
+      // Build query parameters for selection and selected IDs
+      const params = new URLSearchParams();
+      params.append('t', timestamp.toString());
+      
+      // Add selection flags
+      params.append('companySettings', exportSelection.companySettings.toString());
+      params.append('clients', exportSelection.clients.toString());
+      params.append('services', exportSelection.services.toString());
+      params.append('responsibleParties', exportSelection.responsibleParties.toString());
+      params.append('serviceResponsibleParties', exportSelection.serviceResponsibleParties.toString());
+      params.append('bookings', exportSelection.bookingsAndPayments.toString());
+      params.append('payments', exportSelection.bookingsAndPayments.toString());
+      params.append('expenses', exportSelection.expenses.toString());
+      params.append('expenseCategories', exportSelection.expenseCategories.toString());
+      
+      // Add selected IDs (only if not all selected)
+      if (selectedIds.clients.length !== allData.clients.length) {
+        params.append('clientsIds', JSON.stringify(selectedIds.clients));
+      }
+      if (selectedIds.services.length !== allData.services.length) {
+        params.append('servicesIds', JSON.stringify(selectedIds.services));
+      }
+      if (selectedIds.responsibleParties.length !== allData.responsibleParties.length) {
+        params.append('responsiblePartiesIds', JSON.stringify(selectedIds.responsibleParties));
+      }
+      if (selectedIds.serviceResponsibleParties.length !== allData.serviceResponsibleParties.length) {
+        params.append('serviceResponsiblePartiesIds', JSON.stringify(selectedIds.serviceResponsibleParties));
+      }
+      if (selectedIds.bookings.length !== allData.bookings.length) {
+        params.append('bookingsIds', JSON.stringify(selectedIds.bookings));
+      }
+      if (selectedIds.payments.length !== allData.payments.length) {
+        params.append('paymentsIds', JSON.stringify(selectedIds.payments));
+      }
+      if (selectedIds.expenses.length !== allData.expenses.length) {
+        params.append('expensesIds', JSON.stringify(selectedIds.expenses));
+      }
+      if (selectedIds.expenseCategories.length !== allData.expenseCategories.length) {
+        params.append('expenseCategoriesIds', JSON.stringify(selectedIds.expenseCategories));
+      }
+      
+      const response = await api.get(`/backup/export/xlsx?${params.toString()}`, {
         responseType: 'blob'
       });
       
@@ -196,15 +290,15 @@ const BackupDataPage = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${exportFileName}.${exportFileFormat}`;
+      link.download = `${exportFileName}.xlsx`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      showNotification('success', `Data berhasil diexport ke format ${exportFileFormat.toUpperCase()}!`);
+      showNotification('success', `Data berhasil diexport ke format XLSX!`);
     } catch (error) {
-      console.error('Error exporting to Excel/CSV:', error);
+      console.error('Error exporting to Excel:', error);
       showNotification('error', 'Gagal mengexport data: ' + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
@@ -219,10 +313,18 @@ const BackupDataPage = () => {
 
   // Toggle all export selections
   const handleToggleAll = (checked) => {
+    // Prevent toggle if data is not loaded yet
+    if (!allData.clients || !allData.services || !allData.responsibleParties || !allData.serviceResponsibleParties || 
+        !allData.bookings || !allData.payments || !allData.expenses || !allData.expenseCategories) {
+      return;
+    }
+    
     setExportSelection({
       companySettings: checked,
       clients: checked,
       services: checked,
+      responsibleParties: checked,
+      serviceResponsibleParties: checked,
       bookingsAndPayments: checked,
       expenses: checked,
       expenseCategories: checked
@@ -233,6 +335,8 @@ const BackupDataPage = () => {
       setSelectedIds({
         clients: allData.clients.map(item => item.id),
         services: allData.services.map(item => item.id),
+        responsibleParties: allData.responsibleParties.map(item => item.id),
+        serviceResponsibleParties: allData.serviceResponsibleParties.map(item => item.id),
         bookings: allData.bookings.map(item => item.id),
         payments: allData.payments.map(item => item.id),
         expenses: allData.expenses.map(item => item.id),
@@ -242,6 +346,8 @@ const BackupDataPage = () => {
       setSelectedIds({
         clients: [],
         services: [],
+        responsibleParties: [],
+        serviceResponsibleParties: [],
         bookings: [],
         payments: [],
         expenses: [],
@@ -252,10 +358,77 @@ const BackupDataPage = () => {
 
   // Toggle category checkbox with dependency logic
   const handleToggleCategory = (category, checked) => {
+    console.log('🔄 handleToggleCategory called:', { category, checked, currentExportSelection: exportSelection[category] });
+    
+    // Special handling for dependent categories
+    if (!checked) {
+      // Check if this category is required by selected bookings
+      let hasRelatedBookings = false;
+      let categoryName = '';
+      
+      if (category === 'clients') {
+        hasRelatedBookings = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          return booking && booking.client_id;
+        });
+        categoryName = 'Data Klien';
+      } else if (category === 'services') {
+        hasRelatedBookings = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          return booking && booking.service_id;
+        });
+        categoryName = 'Data Layanan';
+      } else if (category === 'responsibleParties') {
+        hasRelatedBookings = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          if (!booking) return false;
+          
+          // Check direct responsible parties from booking details
+          if (booking.notes) {
+            try {
+              const bookingDetails = JSON.parse(booking.notes);
+              if (bookingDetails && bookingDetails.services) {
+                const hasDirectResponsibleParties = bookingDetails.services.some(service => 
+                  service.responsible_party_id
+                );
+                if (hasDirectResponsibleParties) return true;
+              }
+            } catch (error) {
+              // Notes is not JSON format, continue to service-responsible-parties check
+            }
+          }
+          
+          // Check if any service-responsible-party relationship exists for this service
+          return booking.service_id && allData.serviceResponsibleParties.some(srp => 
+            srp.service_id === booking.service_id
+          );
+        });
+        categoryName = 'Data Penanggung Jawab';
+      } else if (category === 'serviceResponsibleParties') {
+        hasRelatedBookings = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          if (!booking || !booking.service_id) return false;
+          // Check if any service-responsible-party relationship exists for this service
+          return allData.serviceResponsibleParties.some(srp => 
+            srp.service_id === booking.service_id
+          );
+        });
+        categoryName = 'Data Layanan Penanggung Jawab';
+      }
+      
+      // If there are related bookings, prevent unchecking
+      if (hasRelatedBookings) {
+        showNotification('warning', `Tidak dapat menghilangkan centang ${categoryName} karena masih ada booking yang berkaitan terpilih.`);
+        return;
+      }
+    }
+    
+    console.log('📝 Setting exportSelection for', category, 'to', checked);
     setExportSelection(prev => ({ ...prev, [category]: checked }));
     
     // Special handling for bookingsAndPayments (includes both bookings & payments)
     if (category === 'bookingsAndPayments') {
+      console.log('🎯 Handling bookingsAndPayments category');
       if (checked) {
         // Select all bookings and payments
         setSelectedIds(prev => ({
@@ -275,12 +448,16 @@ const BackupDataPage = () => {
         }));
       }
     } else if (checked && allData[category]) {
-      // Normal category toggle
+      console.log('✅ Selecting all items for category:', category, 'items count:', allData[category].length);
+      const newSelectedIds = allData[category].map(item => item.id);
+      console.log('✅ New selectedIds for', category, ':', newSelectedIds);
+      
       setSelectedIds(prev => ({
         ...prev,
-        [category]: allData[category].map(item => item.id)
+        [category]: newSelectedIds
       }));
     } else {
+      console.log('❌ Clearing all items for category:', category);
       setSelectedIds(prev => ({
         ...prev,
         [category]: []
@@ -302,12 +479,105 @@ const BackupDataPage = () => {
 
   // Toggle individual item with dependency logic
   const handleToggleItem = (category, itemId) => {
+    console.log('🔄 handleToggleItem called:', { category, itemId, type: typeof itemId });
+    
+    // Normalize itemId to number for consistent comparison
+    const normalizedItemId = typeof itemId === 'string' ? parseInt(itemId) : itemId;
+    
+    // Check if item is currently selected (normalize all IDs for comparison)
+    const currentSelectedIds = selectedIds[category] || [];
+    const normalizedSelectedIds = currentSelectedIds.map(id => typeof id === 'string' ? parseInt(id) : id);
+    const isCurrentlySelected = normalizedSelectedIds.includes(normalizedItemId);
+    
+    console.log('🔄 handleToggleItem details:', {
+      itemId, normalizedItemId, isCurrentlySelected,
+      currentSelectedIds, normalizedSelectedIds
+    });
+    
+    // Prevent unchecking items that are required by selected bookings
+    if (isCurrentlySelected) {
+      let isStillNeeded = false;
+      let itemType = '';
+      
+      if (category === 'clients') {
+        isStillNeeded = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          return booking && booking.client_id === itemId;
+        });
+        itemType = 'klien';
+      } else if (category === 'services') {
+        isStillNeeded = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          return booking && booking.service_id === itemId;
+        });
+        itemType = 'layanan';
+      } else if (category === 'responsibleParties') {
+        // Check if this responsible party is connected to bookings (direct or via service-responsible-parties)
+        isStillNeeded = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          if (!booking) return false;
+          
+          // Check direct responsible parties from booking details
+          if (booking.notes) {
+            try {
+              const bookingDetails = JSON.parse(booking.notes);
+              if (bookingDetails && bookingDetails.services) {
+                const normalizedItemId = typeof itemId === 'string' ? parseInt(itemId) : itemId;
+                const hasDirectResponsibleParty = bookingDetails.services.some(service => {
+                  const serviceResponsiblePartyId = typeof service.responsible_party_id === 'string' 
+                    ? parseInt(service.responsible_party_id) 
+                    : service.responsible_party_id;
+                  return serviceResponsiblePartyId === normalizedItemId;
+                });
+                if (hasDirectResponsibleParty) return true;
+              }
+            } catch (error) {
+              // Notes is not JSON format, continue to service-responsible-parties check
+            }
+          }
+          
+          // Check if this responsible party is connected to the service via service-responsible-parties
+          const normalizedItemId = typeof itemId === 'string' ? parseInt(itemId) : itemId;
+          return booking.service_id && allData.serviceResponsibleParties.some(srp => {
+            const srpResponsiblePartyId = typeof srp.responsible_party_id === 'string' 
+              ? parseInt(srp.responsible_party_id) 
+              : srp.responsible_party_id;
+            return srp.service_id === booking.service_id && srpResponsiblePartyId === normalizedItemId;
+          });
+        });
+        itemType = 'penanggung jawab';
+      } else if (category === 'serviceResponsibleParties') {
+        // Check if this service-responsible-party is for a selected service
+        isStillNeeded = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          if (!booking || !booking.service_id) return false;
+          const srp = allData.serviceResponsibleParties.find(s => s.id === itemId);
+          return srp && srp.service_id === booking.service_id;
+        });
+        itemType = 'layanan penanggung jawab';
+      }
+      
+      if (isStillNeeded) {
+        showNotification('warning', `Tidak dapat menghilangkan centang ${itemType} ini karena masih diperlukan oleh booking yang terpilih.`);
+        return;
+      }
+    }
+    
     setSelectedIds(prev => {
       const currentIds = prev[category] || [];
-      const isAdding = !currentIds.includes(itemId);
+      // Normalize all IDs for consistent comparison
+      const normalizedCurrentIds = currentIds.map(id => typeof id === 'string' ? parseInt(id) : id);
+      const isAdding = !normalizedCurrentIds.includes(normalizedItemId);
+      
+      console.log('🔄 handleToggleItem setSelectedIds:', {
+        currentIds, normalizedCurrentIds, normalizedItemId, isAdding
+      });
+      
       const newIds = isAdding
-        ? [...currentIds, itemId]
-        : currentIds.filter(id => id !== itemId);
+        ? [...currentIds, itemId]  // Keep original itemId type
+        : currentIds.filter(id => (typeof id === 'string' ? parseInt(id) : id) !== normalizedItemId);
+      
+      console.log('🔄 handleToggleItem final newIds:', newIds);
       
       // Update category checkbox based on selection
       if (newIds.length === 0) {
@@ -352,12 +622,118 @@ const BackupDataPage = () => {
                 updatedIds.payments = [...updatedIds.payments, payment.id];
               }
             });
+            
+            // Auto-select responsible parties from booking details (direct assignment)
+            if (booking.notes) {
+              try {
+                const bookingDetails = JSON.parse(booking.notes);
+                if (bookingDetails && bookingDetails.services) {
+                  bookingDetails.services.forEach(service => {
+                    if (service.responsible_party_id) {
+                      const normalizedResponsiblePartyId = typeof service.responsible_party_id === 'string' 
+                        ? parseInt(service.responsible_party_id) 
+                        : service.responsible_party_id;
+                      const isAlreadySelected = updatedIds.responsibleParties.some(id => 
+                        (typeof id === 'string' ? parseInt(id) : id) === normalizedResponsiblePartyId
+                      );
+                      if (!isAlreadySelected) {
+                        console.log('🎯 Adding responsible party from booking details:', service.responsible_party_id);
+                        updatedIds.responsibleParties = [...updatedIds.responsibleParties, service.responsible_party_id];
+                        setExportSelection(p => ({ ...p, responsibleParties: true }));
+                      }
+                    }
+                  });
+                }
+              } catch (error) {
+                // Notes is not JSON format, skip
+                console.log('Notes is not JSON format for booking', booking.id);
+              }
+            }
+            
+            // Auto-select responsible parties and service-responsible-parties related to this service
+            if (booking.service_id) {
+              const relatedServiceResponsibleParties = allData.serviceResponsibleParties.filter(srp => srp.service_id === booking.service_id);
+              console.log('🔗 Related service-responsible-parties for service', booking.service_id, ':', relatedServiceResponsibleParties.length);
+              relatedServiceResponsibleParties.forEach(srp => {
+                if (!updatedIds.serviceResponsibleParties.includes(srp.id)) {
+                  console.log('🎯 Adding service-responsible-party:', srp.id);
+                  updatedIds.serviceResponsibleParties = [...updatedIds.serviceResponsibleParties, srp.id];
+                  setExportSelection(p => ({ ...p, serviceResponsibleParties: true }));
+                }
+                if (srp.responsible_party_id) {
+                  const normalizedResponsiblePartyId = typeof srp.responsible_party_id === 'string' 
+                    ? parseInt(srp.responsible_party_id) 
+                    : srp.responsible_party_id;
+                  const isAlreadySelected = updatedIds.responsibleParties.some(id => 
+                    (typeof id === 'string' ? parseInt(id) : id) === normalizedResponsiblePartyId
+                  );
+                  if (!isAlreadySelected) {
+                    console.log('🎯 Adding responsible party from service:', srp.responsible_party_id);
+                    updatedIds.responsibleParties = [...updatedIds.responsibleParties, srp.responsible_party_id];
+                    setExportSelection(p => ({ ...p, responsibleParties: true }));
+                  }
+                }
+              });
+            }
           } else {
             // Removing booking: also remove related payments
             const relatedPaymentIds = allData.payments
               .filter(p => p.booking_id === itemId)
               .map(p => p.id);
             updatedIds.payments = updatedIds.payments.filter(id => !relatedPaymentIds.includes(id));
+            
+            // Check if we need to remove responsible parties and service-responsible-parties
+            // that are no longer needed by remaining bookings
+            const remainingBookingIds = newIds; // newIds is the updated bookings list
+            const stillNeededResponsiblePartyIds = new Set();
+            const stillNeededServiceResponsiblePartyIds = new Set();
+            
+            remainingBookingIds.forEach(bookingId => {
+              const booking = allData.bookings.find(b => b.id === bookingId);
+              if (booking) {
+                // Check direct responsible parties from booking details
+                if (booking.notes) {
+                  try {
+                    const bookingDetails = JSON.parse(booking.notes);
+                    if (bookingDetails && bookingDetails.services) {
+                      bookingDetails.services.forEach(service => {
+                        if (service.responsible_party_id) {
+                          stillNeededResponsiblePartyIds.add(service.responsible_party_id);
+                        }
+                      });
+                    }
+                  } catch (error) {
+                    // Notes is not JSON format, skip
+                  }
+                }
+                
+                // Check responsible parties from service-responsible-parties
+                if (booking.service_id) {
+                  allData.serviceResponsibleParties.forEach(srp => {
+                    if (srp.service_id === booking.service_id) {
+                      stillNeededServiceResponsiblePartyIds.add(srp.id);
+                      stillNeededResponsiblePartyIds.add(srp.responsible_party_id);
+                    }
+                  });
+                }
+              }
+            });
+            
+            // Remove responsible parties and service-responsible-parties that are no longer needed
+            updatedIds.responsibleParties = updatedIds.responsibleParties.filter(id => 
+              stillNeededResponsiblePartyIds.has(id)
+            );
+            updatedIds.serviceResponsibleParties = updatedIds.serviceResponsibleParties.filter(id => 
+              stillNeededServiceResponsiblePartyIds.has(id)
+            );
+            
+            // Update category checkboxes if no items remain
+            if (updatedIds.responsibleParties.length === 0) {
+              setExportSelection(p => ({ ...p, responsibleParties: false }));
+            }
+            if (updatedIds.serviceResponsibleParties.length === 0) {
+              setExportSelection(p => ({ ...p, serviceResponsibleParties: false }));
+            }
           }
         }
       }
@@ -370,6 +746,8 @@ const BackupDataPage = () => {
   const autoSelectRelatedData = (bookingIds, source = 'bookings') => {
     const relatedClientIds = new Set();
     const relatedServiceIds = new Set();
+    const relatedResponsiblePartyIds = new Set();
+    const relatedServiceResponsiblePartyIds = new Set();
     
     // Find related client_id and service_id from selected bookings
     bookingIds.forEach(bookingId => {
@@ -377,32 +755,155 @@ const BackupDataPage = () => {
       if (booking) {
         if (booking.client_id) relatedClientIds.add(booking.client_id);
         if (booking.service_id) relatedServiceIds.add(booking.service_id);
+        
+        // Check for responsible parties in booking details (stored in notes as JSON)
+        if (booking.notes) {
+          try {
+            const bookingDetails = JSON.parse(booking.notes);
+            if (bookingDetails && bookingDetails.services) {
+              bookingDetails.services.forEach(service => {
+                if (service.responsible_party_id) {
+                  relatedResponsiblePartyIds.add(service.responsible_party_id);
+                }
+              });
+            }
+          } catch (error) {
+            // Notes is not JSON format, skip
+            console.log('Notes is not JSON format for booking', booking.id);
+          }
+        }
       }
+    });
+    
+    // Find related responsible parties from selected services (via service-responsible-parties)
+    relatedServiceIds.forEach(serviceId => {
+      // Find service-responsible-party relationships for this service
+      allData.serviceResponsibleParties.forEach(srp => {
+        if (srp.service_id === serviceId) {
+          relatedServiceResponsiblePartyIds.add(srp.id);
+          relatedResponsiblePartyIds.add(srp.responsible_party_id);
+        }
+      });
     });
     
     // Update selectedIds to include related data
     setSelectedIds(prev => {
       const newClientIds = new Set([...prev.clients, ...relatedClientIds]);
       const newServiceIds = new Set([...prev.services, ...relatedServiceIds]);
+      const newResponsiblePartyIds = new Set([...prev.responsibleParties, ...relatedResponsiblePartyIds]);
+      const newServiceResponsiblePartyIds = new Set([...prev.serviceResponsibleParties, ...relatedServiceResponsiblePartyIds]);
       
-      return {
+      const newSelectedIds = {
         ...prev,
         clients: Array.from(newClientIds),
-        services: Array.from(newServiceIds)
+        services: Array.from(newServiceIds),
+        responsibleParties: Array.from(newResponsiblePartyIds),
+        serviceResponsibleParties: Array.from(newServiceResponsiblePartyIds)
       };
+      
+      console.log('🔄 Auto-selection update:', {
+        source,
+        relatedResponsiblePartyIds: Array.from(relatedResponsiblePartyIds),
+        newResponsiblePartyIds: newSelectedIds.responsibleParties,
+        totalResponsibleParties: allData.responsibleParties.length
+      });
+      
+      return newSelectedIds;
     });
     
     // Auto-check categories if they have items
     if (relatedClientIds.size > 0) {
       setExportSelection(prev => ({ ...prev, clients: true }));
+      // Also select all client IDs
+      setSelectedIds(prev => ({
+        ...prev,
+        clients: Array.from(new Set([...prev.clients, ...relatedClientIds]))
+      }));
     }
     if (relatedServiceIds.size > 0) {
       setExportSelection(prev => ({ ...prev, services: true }));
+      // Also select all service IDs
+      setSelectedIds(prev => ({
+        ...prev,
+        services: Array.from(new Set([...prev.services, ...relatedServiceIds]))
+      }));
+    }
+    if (relatedResponsiblePartyIds.size > 0) {
+      setExportSelection(prev => ({ ...prev, responsibleParties: true }));
+      // Also select all responsible party IDs
+      setSelectedIds(prev => ({
+        ...prev,
+        responsibleParties: Array.from(new Set([...prev.responsibleParties, ...relatedResponsiblePartyIds]))
+      }));
+    }
+    if (relatedServiceResponsiblePartyIds.size > 0) {
+      setExportSelection(prev => ({ ...prev, serviceResponsibleParties: true }));
+      // Also select all service responsible party IDs
+      setSelectedIds(prev => ({
+        ...prev,
+        serviceResponsibleParties: Array.from(new Set([...prev.serviceResponsibleParties, ...relatedServiceResponsiblePartyIds]))
+      }));
     }
   };
 
   // Toggle all items in a category
   const handleToggleAllInCategory = (category, checked) => {
+    // Prevent unchecking all items if they are required by selected bookings
+    if (!checked) {
+      let hasRequiredItems = false;
+      
+      if (category === 'clients') {
+        hasRequiredItems = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          return booking && booking.client_id;
+        });
+      } else if (category === 'services') {
+        hasRequiredItems = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          return booking && booking.service_id;
+        });
+      } else if (category === 'responsibleParties') {
+        hasRequiredItems = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          if (!booking) return false;
+          
+          // Check direct responsible parties from booking details
+          if (booking.notes) {
+            try {
+              const bookingDetails = JSON.parse(booking.notes);
+              if (bookingDetails && bookingDetails.services) {
+                const hasDirectResponsibleParties = bookingDetails.services.some(service => 
+                  service.responsible_party_id
+                );
+                if (hasDirectResponsibleParties) return true;
+              }
+            } catch (error) {
+              // Notes is not JSON format, continue to service-responsible-parties check
+            }
+          }
+          
+          // Check if any service-responsible-party relationship exists for this service
+          return booking.service_id && allData.serviceResponsibleParties.some(srp => 
+            srp.service_id === booking.service_id
+          );
+        });
+      } else if (category === 'serviceResponsibleParties') {
+        hasRequiredItems = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          if (!booking || !booking.service_id) return false;
+          // Check if any service-responsible-party relationship exists for this service
+          return allData.serviceResponsibleParties.some(srp => 
+            srp.service_id === booking.service_id
+          );
+        });
+      }
+      
+      if (hasRequiredItems) {
+        showNotification('warning', `Tidak dapat menghilangkan centang semua item karena masih ada booking yang berkaitan terpilih.`);
+        return;
+      }
+    }
+    
     if (checked) {
       const allIds = allData[category].map(item => item.id);
       setSelectedIds(prev => ({
@@ -458,8 +959,33 @@ const BackupDataPage = () => {
         return `${item.name} ${item.phone || ''} ${item.email || ''}`;
       case 'services':
         return `${item.name} ${item.description || ''}`;
+      case 'responsibleParties':
+        return `${item.name} ${item.phone || ''} ${item.address || ''}`;
+      case 'serviceResponsibleParties':
+        return `${item.name} ${item.phone || ''} ${item.address || ''}`;
       case 'bookings':
-        return `${item.client_name || ''} ${item.service_name || ''} ${item.booking_date || ''} ${item.location_name || ''}`;
+        // Include all searchable fields for bookings
+        let searchableText = `${item.client_name || ''} ${item.service_name || ''} ${item.booking_date || ''} ${item.booking_time || ''} ${item.location_name || ''} ${item.status || ''} ${item.payment_status || ''} ${item.total_price || ''}`;
+
+        // Add service names from notes if available
+        try {
+          if (item.notes && typeof item.notes === 'string' && item.notes.trim().startsWith('{')) {
+            const notesObj = JSON.parse(item.notes);
+            if (notesObj.selected_services && Array.isArray(notesObj.selected_services)) {
+              const serviceNames = notesObj.selected_services.map(s => s.service_name).join(' ');
+              searchableText += ` ${serviceNames}`;
+
+              // Add user notes if available
+              if (notesObj.user_notes) {
+                searchableText += ` ${notesObj.user_notes}`;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+
+        return searchableText;
       case 'payments':
         return `${item.client_name || ''} ${item.amount || ''} ${item.payment_date || ''}`;
       case 'expenses':
@@ -478,9 +1004,53 @@ const BackupDataPage = () => {
         return `${item.name}${item.phone ? ` - ${item.phone}` : ''}`;
       case 'services':
         return `${item.name} - Rp ${parseFloat(item.price || 0).toLocaleString('id-ID')}`;
+      case 'responsibleParties':
+        return `${item.name}${item.phone ? ` - ${item.phone}` : ''}${item.address ? ` (${item.address})` : ''}`;
+      case 'serviceResponsibleParties':
+        return `${item.name}${item.phone ? ` - ${item.phone}` : ''}${item.address ? ` (${item.address})` : ''}`;
       case 'bookings':
         const locationText = item.location_name ? ` 📍 ${item.location_name}` : '';
-        return `${item.client_name || 'Unknown'} - ${item.service_name || 'Unknown'}${locationText} (${item.booking_date || 'N/A'})`;
+
+        // Parse notes to extract quantity and service information
+        let quantityText = '';
+        let servicesText = '';
+        let notesSummary = '';
+        try {
+          if (item.notes && typeof item.notes === 'string' && item.notes.trim().startsWith('{')) {
+            const notesObj = JSON.parse(item.notes);
+            if (notesObj.selected_services && Array.isArray(notesObj.selected_services)) {
+              const totalQuantity = notesObj.selected_services.reduce((sum, service) => sum + (parseInt(service.quantity) || 1), 0);
+              if (totalQuantity > 1) {
+                quantityText = ` (${totalQuantity} layanan)`;
+              }
+
+              // Show service names if multiple services
+              if (notesObj.selected_services.length > 1) {
+                const serviceNames = notesObj.selected_services.map(s => s.service_name).join(', ');
+                servicesText = ` - ${serviceNames}`;
+              }
+            }
+
+            // Extract notes summary
+            if (notesObj.user_notes && notesObj.user_notes.trim()) {
+              notesSummary = ` | ${notesObj.user_notes.substring(0, 30)}${notesObj.user_notes.length > 30 ? '...' : ''}`;
+            }
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+
+        // Format booking date and time
+        const bookingDate = item.booking_date ? new Date(item.booking_date).toLocaleDateString('id-ID') : 'N/A';
+        const bookingTime = item.booking_time || '';
+        const dateTimeText = bookingTime ? `${bookingDate} ${bookingTime}` : bookingDate;
+
+        // Status and payment info
+        const statusText = item.status ? ` | ${item.status}` : '';
+        const paymentStatusText = item.payment_status ? ` | ${item.payment_status}` : '';
+        const totalPriceText = item.total_price ? ` | Rp ${parseFloat(item.total_price).toLocaleString('id-ID')}` : '';
+
+        return `${item.client_name || 'Unknown'} - ${item.service_name || 'Unknown'}${servicesText}${quantityText}${locationText} | ${dateTimeText}${statusText}${paymentStatusText}${totalPriceText}${notesSummary}`;
       case 'payments':
         return `${item.client_name || 'Unknown'} - Rp ${parseFloat(item.amount || 0).toLocaleString('id-ID')} (${item.payment_date || 'N/A'})`;
       case 'expenses':
@@ -504,6 +1074,8 @@ const BackupDataPage = () => {
       params.append('companySettings', exportSelection.companySettings);
       params.append('clients', exportSelection.clients);
       params.append('services', exportSelection.services);
+      params.append('responsibleParties', exportSelection.responsibleParties);
+      params.append('serviceResponsibleParties', exportSelection.serviceResponsibleParties);
       params.append('bookings', exportSelection.bookingsAndPayments);
       params.append('payments', exportSelection.bookingsAndPayments);
       params.append('expenses', exportSelection.expenses);
@@ -565,9 +1137,11 @@ const BackupDataPage = () => {
         const backupData = JSON.parse(fileContent);
         
         // Fetch current data from backend to compare
-        const [clientsRes, servicesRes, categoriesRes, bookingsRes, expensesRes] = await Promise.all([
+        const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, categoriesRes, bookingsRes, expensesRes] = await Promise.all([
           api.get('/clients'),
           api.get('/services'),
+          api.get('/user/responsible-parties'),
+          api.get('/user/service-responsible-parties'),
           api.get('/expense-categories'),
           api.get('/bookings'),
           api.get('/expenses')
@@ -576,6 +1150,8 @@ const BackupDataPage = () => {
         console.log('🌐 ===== API RESPONSES =====');
         console.log('Clients response:', clientsRes);
         console.log('Services response:', servicesRes);
+        console.log('Responsible Parties response:', responsiblePartiesRes);
+        console.log('Service Responsible Parties response:', serviceResponsiblePartiesRes);
         console.log('Categories response:', categoriesRes);
         console.log('Bookings response:', bookingsRes);
         console.log('Expenses response:', expensesRes);
@@ -600,6 +1176,8 @@ const BackupDataPage = () => {
         const currentData = {
           clients: extractData(clientsRes),
           services: extractData(servicesRes),
+          responsibleParties: extractData(responsiblePartiesRes),
+          serviceResponsibleParties: extractData(serviceResponsiblePartiesRes),
           expenseCategories: extractData(categoriesRes),
           bookings: extractData(bookingsRes),
           expenses: extractData(expensesRes)
@@ -607,13 +1185,41 @@ const BackupDataPage = () => {
         
         console.log('📊 ===== CURRENT DATA STRUCTURE =====');
         console.log('currentData:', currentData);
-        console.log('currentData.bookings type:', typeof currentData.bookings);
-        console.log('currentData.bookings is array:', Array.isArray(currentData.bookings));
+        console.log('currentData.clients length:', currentData.clients?.length);
+        console.log('currentData.services length:', currentData.services?.length);
+        console.log('currentData.responsibleParties length:', currentData.responsibleParties?.length);
+        console.log('currentData.serviceResponsibleParties length:', currentData.serviceResponsibleParties?.length);
         console.log('currentData.bookings length:', currentData.bookings?.length);
+        console.log('currentData.expenses length:', currentData.expenses?.length);
+        if (currentData.responsibleParties?.length > 0) {
+          console.log('currentData.responsibleParties[0]:', currentData.responsibleParties[0]);
+        }
         if (currentData.bookings?.length > 0) {
           console.log('currentData.bookings[0]:', currentData.bookings[0]);
         }
         console.log('=====================================');
+        
+        // Log backup data structure
+        console.log('📦 ===== BACKUP DATA STRUCTURE =====');
+        console.log('backupData:', backupData);
+        console.log('backupData.data:', backupData.data);
+        if (backupData.data?.bookings?.length > 0) {
+          console.log('backupData.data.bookings[0]:', backupData.data.bookings[0]);
+          console.log('backupData.data.bookings[0].notes:', backupData.data.bookings[0].notes);
+          // Try to parse notes
+          try {
+            if (backupData.data.bookings[0].notes && typeof backupData.data.bookings[0].notes === 'string' && backupData.data.bookings[0].notes.trim().startsWith('{')) {
+              const notesObj = JSON.parse(backupData.data.bookings[0].notes);
+              console.log('Parsed notes:', notesObj);
+              if (notesObj.services) {
+                console.log('Services in notes:', notesObj.services);
+              }
+            }
+          } catch (e) {
+            console.log('Notes parsing error:', e);
+          }
+        }
+        console.log('====================================');
         
         // Detect duplicates and prepare selection
         const duplicates = detectDuplicates(backupData.data, currentData);
@@ -623,6 +1229,8 @@ const BackupDataPage = () => {
         console.log('=== DUPLICATE DETECTION SUMMARY ===');
         console.log('Clients duplikat:', duplicates.clients?.length || 0);
         console.log('Services duplikat:', duplicates.services?.length || 0);
+        console.log('Responsible Parties duplikat:', duplicates.responsibleParties?.length || 0);
+        console.log('Service Responsible Parties duplikat:', duplicates.serviceResponsibleParties?.length || 0);
         console.log('Bookings duplikat:', duplicates.bookings?.length || 0);
         console.log('Expenses duplikat:', duplicates.expenses?.length || 0);
         console.log('Expense Categories duplikat:', duplicates.expenseCategories?.length || 0);
@@ -650,10 +1258,22 @@ const BackupDataPage = () => {
     console.log('📦 Backup data categories:', Object.keys(backupData));
     console.log('💾 Current data categories:', Object.keys(currentData));
     
+    // CRITICAL CHECK: Verify backup data is loaded
+    console.log('\n📦 BACKUP DATA VERIFICATION:');
+    console.log('  Clients:', backupData.clients?.length || 0);
+    console.log('  Services:', backupData.services?.length || 0);
+    console.log('  Responsible Parties:', backupData.responsibleParties?.length || 0);
+    console.log('  Service Responsible Parties:', backupData.serviceResponsibleParties?.length || 0);
+    console.log('  Bookings:', backupData.bookings?.length || 0);
+    console.log('  Expenses:', backupData.expenses?.length || 0);
+    console.log('  Expense Categories:', backupData.expenseCategories?.length || 0);
+    
     // CRITICAL CHECK: Verify current data is loaded
     console.log('\n⚠️ CRITICAL VERIFICATION - Current Data Status:');
     console.log('  Clients:', currentData.clients?.length || 0);
     console.log('  Services:', currentData.services?.length || 0);
+    console.log('  Responsible Parties:', currentData.responsibleParties?.length || 0);
+    console.log('  Service Responsible Parties:', currentData.serviceResponsibleParties?.length || 0);
     console.log('  Bookings:', currentData.bookings?.length || 0);
     console.log('  Expenses:', currentData.expenses?.length || 0);
     console.log('  Expense Categories:', currentData.expenseCategories?.length || 0);
@@ -669,6 +1289,8 @@ const BackupDataPage = () => {
     const duplicates = {
       clients: [],
       services: [],
+      responsibleParties: [],
+      serviceResponsibleParties: [],
       expenseCategories: [],
       bookings: [],
       expenses: []
@@ -695,6 +1317,95 @@ const BackupDataPage = () => {
           parseFloat(item.price) === parseFloat(existing.price)
         );
         if (isDuplicate) duplicates.services.push(index);
+      });
+    }
+    
+    // Check responsible parties (by name and phone)
+    if (backupData.responsibleParties) {
+      console.log('👥 ===== CHECKING RESPONSIBLE PARTIES FOR DUPLICATES =====');
+      console.log('👥 Backup responsible parties count:', backupData.responsibleParties.length);
+      console.log('👥 Current responsible parties count:', currentData.responsibleParties?.length || 0);
+      
+      // Log sample data to verify structure
+      if (backupData.responsibleParties.length > 0) {
+        console.log('👥 Sample backup responsible party:', backupData.responsibleParties[0]);
+      }
+      if (currentData.responsibleParties?.length > 0) {
+        console.log('👥 Sample current responsible party:', currentData.responsibleParties[0]);
+      }
+      
+      console.log('👥 Checking responsible parties for duplicates...');
+      console.log('Backup responsible parties:', backupData.responsibleParties.length);
+      console.log('Current responsible parties:', currentData.responsibleParties?.length || 0);
+      
+      // Log ALL current responsible parties
+      console.log('\n👥 ALL CURRENT RESPONSIBLE PARTIES IN DATABASE:');
+      currentData.responsibleParties?.forEach((party, idx) => {
+        console.log(`  [${idx}] Name: ${party.name}, Phone: ${party.phone}, Address: ${party.address}`);
+      });
+      
+      console.log('\n👥 ALL BACKUP RESPONSIBLE PARTIES:');
+      backupData.responsibleParties.forEach((party, idx) => {
+        console.log(`  [${idx}] Name: ${party.name}, Phone: ${party.phone}, Address: ${party.address}`);
+      });
+      
+      backupData.responsibleParties.forEach((item, index) => {
+        console.log(`\n👥 Checking responsible party ${index}: {name: '${item.name}', phone: '${item.phone}', address: '${item.address}'}`);
+        
+        const isDuplicate = currentData.responsibleParties?.some((existing, existingIdx) => {
+          // More flexible duplicate detection for responsible parties
+          // Match by name (case-insensitive), or by name + phone if both exist
+          const nameMatch = item.name && existing.name && 
+            item.name.trim().toLowerCase() === existing.name.trim().toLowerCase();
+          
+          let phoneMatch = false;
+          if (item.phone && existing.phone) {
+            // If both have phone numbers, they must match
+            phoneMatch = item.phone.replace(/\D/g, '') === existing.phone.replace(/\D/g, '');
+          } else if (!item.phone && !existing.phone) {
+            // If both don't have phone numbers, consider phone as matching
+            phoneMatch = true;
+          } else {
+            // If one has phone and the other doesn't, only match if names are identical
+            phoneMatch = true; // Allow matching even if phone presence differs
+          }
+          
+          console.log(`  Comparing with existing [${existingIdx}]: {name: '${existing.name}', phone: '${existing.phone}'}`);
+          console.log(`    Name match: ${nameMatch} (${item.name?.trim().toLowerCase()} vs ${existing.name?.trim().toLowerCase()})`);
+          console.log(`    Phone match logic: ${phoneMatch} (${item.phone?.replace(/\D/g, '')} vs ${existing.phone?.replace(/\D/g, '')})`);
+          
+          const finalMatch = nameMatch && phoneMatch;
+          if (finalMatch) {
+            console.log(`    🎯 DUPLICATE FOUND!`);
+          }
+          
+          return finalMatch;
+        });
+        
+        if (isDuplicate) {
+          console.log(`🚫 [DUPLIKAT] Responsible party index ${index} terdeteksi duplikat: {name: '${item.name}', phone: '${item.phone}'}`);
+          duplicates.responsibleParties.push(index);
+        } else {
+          console.log(`✅ Responsible party index ${index} unik: {name: '${item.name}', phone: '${item.phone}'}`);
+        }
+      });
+      
+      console.log(`👥 ===== RESPONSIBLE PARTIES DUPLICATE CHECK COMPLETE =====`);
+      console.log(`👥 Total responsible parties checked: ${backupData.responsibleParties.length}`);
+      console.log(`👥 Duplicates found: ${duplicates.responsibleParties.length}`);
+      console.log(`👥 Duplicate indices: [${duplicates.responsibleParties.join(', ')}]`);
+    }
+    
+    // Check service responsible parties (by name and phone)
+    if (backupData.serviceResponsibleParties) {
+      backupData.serviceResponsibleParties.forEach((item, index) => {
+        const isDuplicate = currentData.serviceResponsibleParties?.some(existing => 
+          item.name && existing.name && 
+          item.name.trim().toLowerCase() === existing.name.trim().toLowerCase() &&
+          item.phone && existing.phone && 
+          item.phone.replace(/\D/g, '') === existing.phone.replace(/\D/g, '')
+        );
+        if (isDuplicate) duplicates.serviceResponsibleParties.push(index);
       });
     }
     
@@ -884,7 +1595,43 @@ const BackupDataPage = () => {
                                        'booking_date_end', 'booking_time_end', 'booking_days',
                                        'discount', 'tax_percentage', 'payment_status', 'amount_paid'];
               
-              return fieldsToCompare.every(field => compareField(field));
+              const basicFieldsMatch = fieldsToCompare.every(field => compareField(field));
+              
+              // Compare selected_services array (including quantity)
+              const compareSelectedServices = () => {
+                const itemServices = itemNotesObj.selected_services;
+                const existingServices = existingNotesObj.selected_services;
+                
+                // If both are empty/null, consider them matching
+                if (!itemServices && !existingServices) return true;
+                if (!itemServices || !existingServices) return false;
+                
+                // Both must be arrays
+                if (!Array.isArray(itemServices) || !Array.isArray(existingServices)) return false;
+                
+                // Must have same length
+                if (itemServices.length !== existingServices.length) return false;
+                
+                // Compare each service (by name and quantity)
+                return itemServices.every((itemService, index) => {
+                  const existingService = existingServices[index];
+                  if (!existingService) return false;
+                  
+                  // Compare service name
+                  const sameName = normalizeString(itemService.service_name) === normalizeString(existingService.service_name);
+                  
+                  // Compare quantity (default to 1 if not specified)
+                  const itemQuantity = parseInt(itemService.quantity) || 1;
+                  const existingQuantity = parseInt(existingService.quantity) || 1;
+                  const sameQuantity = itemQuantity === existingQuantity;
+                  
+                  return sameName && sameQuantity;
+                });
+              };
+              
+              const servicesMatch = compareSelectedServices();
+              
+              return basicFieldsMatch && servicesMatch;
             } catch (e) {
               // If JSON parsing fails, fall back to string comparison
               return normalizeString(item.notes) === normalizeString(existing.notes);
@@ -1063,20 +1810,32 @@ const BackupDataPage = () => {
       });
     }
     
+    console.log('🔍 ===== DUPLICATE DETECTION COMPLETED =====');
+    console.log('Final duplicate counts:');
+    console.log('  Clients:', duplicates.clients.length);
+    console.log('  Services:', duplicates.services.length);
+    console.log('  Responsible Parties:', duplicates.responsibleParties.length);
+    console.log('  Service Responsible Parties:', duplicates.serviceResponsibleParties.length);
+    console.log('  Bookings:', duplicates.bookings.length);
+    console.log('  Expenses:', duplicates.expenseCategories.length);
+    console.log('  Expense Categories:', duplicates.expenseCategories.length);
+    
     return duplicates;
   };
   
   // Prepare initial import selection (select all non-duplicates)
   const prepareImportSelection = (backupData, duplicates) => {
-    // Tidak auto-select apa pun, biarkan user memilih sendiri
+    // Auto-select all non-duplicate items
     const selection = {
       companySettings: false,
-      clients: [],
-      services: [],
-      bookings: [],
-      payments: [],
-      expenses: [],
-      expenseCategories: []
+      clients: backupData.clients.map((_, index) => !duplicates.clients?.includes(index) ? index : -1).filter(idx => idx !== -1),
+      services: backupData.services.map((_, index) => !duplicates.services?.includes(index) ? index : -1).filter(idx => idx !== -1),
+      responsibleParties: backupData.responsibleParties.map((_, index) => !duplicates.responsibleParties?.includes(index) ? index : -1).filter(idx => idx !== -1),
+      serviceResponsibleParties: backupData.serviceResponsibleParties.map((_, index) => !duplicates.serviceResponsibleParties?.includes(index) ? index : -1).filter(idx => idx !== -1),
+      bookings: backupData.bookings.map((_, index) => !duplicates.bookings?.includes(index) ? index : -1).filter(idx => idx !== -1),
+      payments: [], // Payments are handled separately based on selected bookings
+      expenses: backupData.expenses.map((_, index) => !duplicates.expenses?.includes(index) ? index : -1).filter(idx => idx !== -1),
+      expenseCategories: backupData.expenseCategories.map((_, index) => !duplicates.expenseCategories?.includes(index) ? index : -1).filter(idx => idx !== -1)
     };
     
     return selection;
@@ -1104,6 +1863,10 @@ const BackupDataPage = () => {
         return `${item.name || ''} ${item.phone || ''} ${item.email || ''} ${item.address || ''}`.toLowerCase();
       case 'services':
         return `${item.name || ''} ${item.description || ''} ${item.price || ''}`.toLowerCase();
+      case 'responsibleParties':
+        return `${item.name || ''} ${item.phone || ''} ${item.address || ''}`.toLowerCase();
+      case 'serviceResponsibleParties':
+        return `${item.name || ''} ${item.phone || ''} ${item.address || ''}`.toLowerCase();
       case 'expenseCategories':
         return `${item.name || ''}`.toLowerCase();
       case 'bookings':
@@ -1122,6 +1885,10 @@ const BackupDataPage = () => {
         return `${item.name}${item.phone ? ` - ${item.phone}` : ''}`;
       case 'services':
         return `${item.name} - Rp ${parseFloat(item.price).toLocaleString('id-ID')}`;
+      case 'responsibleParties':
+        return `${item.name}${item.phone ? ` - ${item.phone}` : ''}${item.address ? ` (${item.address})` : ''}`;
+      case 'serviceResponsibleParties':
+        return `${item.name}${item.phone ? ` - ${item.phone}` : ''}${item.address ? ` (${item.address})` : ''}`;
       case 'expenseCategories':
         return item.name;
       case 'bookings':
@@ -1129,12 +1896,20 @@ const BackupDataPage = () => {
         // Get client and service names from notes if available
         let clientName = 'Klien';
         let serviceName = 'Layanan';
+        let quantityText = '';
         
         try {
           if (item.notes) {
             const notes = JSON.parse(item.notes);
             if (notes.services && notes.services.length > 0) {
               serviceName = notes.services.map(s => s.service_name).join(', ');
+            }
+            // Check for selected_services with quantity
+            if (notes.selected_services && Array.isArray(notes.selected_services)) {
+              const totalQuantity = notes.selected_services.reduce((sum, service) => sum + (parseInt(service.quantity) || 1), 0);
+              if (totalQuantity > 1) {
+                quantityText = ` (${totalQuantity} layanan)`;
+              }
             }
           }
         } catch (e) {
@@ -1148,7 +1923,7 @@ const BackupDataPage = () => {
         }
         
         const locationInfo = item.location_name ? ` 📍 ${item.location_name}` : '';
-        return `${bookingDate} ${item.booking_time} - ${clientName} - ${serviceName}${locationInfo} - Rp ${parseFloat(item.total_price).toLocaleString('id-ID')} (${item.status})`;
+        return `${bookingDate} ${item.booking_time} - ${clientName} - ${serviceName}${quantityText}${locationInfo} - Rp ${parseFloat(item.total_price).toLocaleString('id-ID')} (${item.status})`;
       case 'expenses':
         const expenseDate = new Date(item.expense_date).toLocaleDateString('id-ID');
         return `${expenseDate} - ${item.description} - Rp ${parseFloat(item.amount).toLocaleString('id-ID')}`;
@@ -1159,6 +1934,11 @@ const BackupDataPage = () => {
   
   // Toggle import item selection
   const handleToggleImportItem = (category, index) => {
+    // Prevent toggling duplicate items
+    if (duplicateData[category]?.includes(index)) {
+      return;
+    }
+
     setImportSelection(prev => {
       const current = prev[category] || [];
       const isSelected = current.includes(index);
@@ -1594,6 +2374,8 @@ const BackupDataPage = () => {
       const hasInvalidSelection = 
         importSelection.clients?.some(idx => duplicateData.clients?.includes(idx)) ||
         importSelection.services?.some(idx => duplicateData.services?.includes(idx)) ||
+        importSelection.responsibleParties?.some(idx => duplicateData.responsibleParties?.includes(idx)) ||
+        importSelection.serviceResponsibleParties?.some(idx => duplicateData.serviceResponsibleParties?.includes(idx)) ||
         importSelection.bookings?.some(idx => duplicateData.bookings?.includes(idx)) ||
         importSelection.expenses?.some(idx => duplicateData.expenses?.includes(idx)) ||
         importSelection.expenseCategories?.some(idx => duplicateData.expenseCategories?.includes(idx));
@@ -1619,6 +2401,8 @@ const BackupDataPage = () => {
         // Even if they are duplicates and not imported, backend needs them to map booking IDs
         clients: importData.clients || [],
         services: importData.services || [],
+        responsibleParties: importSelection.responsibleParties?.map(index => importData.responsibleParties[index]).filter(Boolean) || [],
+        serviceResponsibleParties: importSelection.serviceResponsibleParties?.map(index => importData.serviceResponsibleParties[index]).filter(Boolean) || [],
         bookings: selectedBookings,
         payments: relatedPayments, // Include all payments for selected bookings
         expenses: importSelection.expenses?.map(index => importData.expenses[index]).filter(Boolean) || [],
@@ -1629,6 +2413,8 @@ const BackupDataPage = () => {
       const importFlags = {
         clients: importSelection.clients || [],
         services: importSelection.services || [],
+        responsibleParties: importSelection.responsibleParties || [],
+        serviceResponsibleParties: importSelection.serviceResponsibleParties || [],
         bookings: importSelection.bookings || [],
         expenses: importSelection.expenses || [],
         expenseCategories: importSelection.expenseCategories || []
@@ -1638,6 +2424,8 @@ const BackupDataPage = () => {
       console.log('=== DATA TO IMPORT ===');
       console.log('Clients:', selectedData.clients.length);
       console.log('Services:', selectedData.services.length);
+      console.log('Responsible Parties:', selectedData.responsibleParties.length);
+      console.log('Service Responsible Parties:', selectedData.serviceResponsibleParties.length);
       console.log('Bookings:', selectedData.bookings.length);
       console.log('Payments:', selectedData.payments.length);
       console.log('Expenses:', selectedData.expenses.length);
@@ -1655,6 +2443,8 @@ const BackupDataPage = () => {
           companySettings: !!selectedData.companySettings,
           clients: selectedData.clients.length > 0,
           services: selectedData.services.length > 0,
+          responsibleParties: selectedData.responsibleParties.length > 0,
+          serviceResponsibleParties: selectedData.serviceResponsibleParties.length > 0,
           bookings: selectedData.bookings.length > 0,
           payments: selectedData.payments.length > 0,
           expenses: selectedData.expenses.length > 0,
@@ -1733,13 +2523,13 @@ const BackupDataPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-zinc-50">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 py-4 sm:py-6 md:py-8">
         {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+        <div className="mb-4 sm:mb-6 md:mb-8">
+          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Backup & Restore Data
           </h1>
-          <p className="text-slate-600 mt-2">
+          <p className="text-xs sm:text-sm md:text-base text-slate-600 mt-1 sm:mt-2">
             Export dan import data booking, keuangan, dan pengeluaran Anda
           </p>
         </div>
@@ -1775,107 +2565,99 @@ const BackupDataPage = () => {
         )}
 
         {/* Data Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600 font-medium">Total Booking</span>
-              <FiDatabase className="text-blue-500" size={20} />
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8">
+          <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-xs sm:text-sm text-gray-600 font-medium">Total Booking</span>
+              <FiDatabase className="text-blue-500 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
             </div>
-            <p className="text-2xl font-bold text-gray-800">{dataStats.totalBookings}</p>
-            <p className="text-xs text-gray-500 mt-1">Data booking tersedia</p>
+            <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">{dataStats.totalBookings}</p>
+            <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Data booking tersedia</p>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600 font-medium">Total Pembayaran</span>
-              <FiDatabase className="text-green-500" size={20} />
+          <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-xs sm:text-sm text-gray-600 font-medium">Total Pembayaran</span>
+              <FiDatabase className="text-green-500 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
             </div>
-            <p className="text-2xl font-bold text-gray-800">{dataStats.totalPayments}</p>
-            <p className="text-xs text-gray-500 mt-1">Data pembayaran tersedia</p>
+            <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">{dataStats.totalPayments}</p>
+            <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Data pembayaran tersedia</p>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600 font-medium">Total Pengeluaran</span>
-              <FiDatabase className="text-red-500" size={20} />
+          <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-xs sm:text-sm text-gray-600 font-medium">Total Pengeluaran</span>
+              <FiDatabase className="text-red-500 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
             </div>
-            <p className="text-2xl font-bold text-gray-800">{dataStats.totalExpenses}</p>
-            <p className="text-xs text-gray-500 mt-1">Data pengeluaran tersedia</p>
+            <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">{dataStats.totalExpenses}</p>
+            <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Data pengeluaran tersedia</p>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600 font-medium">Total Klien</span>
-              <FiDatabase className="text-purple-500" size={20} />
+          <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-xs sm:text-sm text-gray-600 font-medium">Total Klien</span>
+              <FiDatabase className="text-purple-500 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
             </div>
-            <p className="text-2xl font-bold text-gray-800">{dataStats.totalClients}</p>
-            <p className="text-xs text-gray-500 mt-1">Data klien tersedia</p>
+            <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">{dataStats.totalClients}</p>
+            <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Data klien tersedia</p>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600 font-medium">Total Layanan</span>
-              <FiDatabase className="text-orange-500" size={20} />
+          <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-xs sm:text-sm text-gray-600 font-medium">Total Layanan</span>
+              <FiDatabase className="text-orange-500 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
             </div>
-            <p className="text-2xl font-bold text-gray-800">{dataStats.totalServices}</p>
-            <p className="text-xs text-gray-500 mt-1">Data layanan tersedia</p>
+            <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">{dataStats.totalServices}</p>
+            <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Data layanan tersedia</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* Export Section */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <FiDownload className="text-white" size={24} />
-                <h2 className="text-xl font-bold text-white">Export Data</h2>
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <FiDownload className="text-white w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                <h2 className="text-lg sm:text-xl font-bold text-white">Export Data</h2>
               </div>
-              <p className="text-blue-100 text-sm mt-1">Download data Anda dalam berbagai format</p>
+              <p className="text-blue-100 text-xs sm:text-sm mt-0.5 sm:mt-1">Download data Anda dalam berbagai format</p>
             </div>
 
-            <div className="p-6 space-y-4">
-              {/* Export Excel/CSV */}
-              <div className="border border-gray-200 rounded-xl p-5 hover:border-blue-300 transition-colors">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <FiFileText className="text-green-600" size={20} />
+            <div className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+              {/* Export Excel */}
+              <div className="border border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 hover:border-blue-300 transition-colors">
+                <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <FiFileText className="text-green-600 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-800 mb-1">Export ke Excel/CSV</h3>
-                    <p className="text-sm text-gray-600">
-                      Export data dalam format Excel atau CSV. Cocok untuk membuka di Microsoft Excel, Google Sheets, atau aplikasi spreadsheet lainnya.
+                    <h3 className="font-semibold text-gray-800 text-sm sm:text-base mb-0.5 sm:mb-1">Export ke Excel</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">
+                      Export data dalam format Excel. Cocok untuk membuka di Microsoft Excel, Google Sheets, atau aplikasi spreadsheet lainnya.
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-row gap-1.5 sm:gap-3">
                   <button
-                    onClick={() => handleShowExportFileModal('xlsx')}
+                    onClick={() => handleShowExportFileModal()}
                     disabled={loading}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:shadow-lg hover:shadow-green-500/30 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:shadow-lg hover:shadow-green-500/30 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm md:text-base"
                   >
-                    <FiDownload size={18} />
+                    <FiDownload className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
                     Export Excel
-                  </button>
-                  <button
-                    onClick={() => handleShowExportFileModal('csv')}
-                    disabled={loading}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg hover:shadow-lg hover:shadow-teal-500/30 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <FiDownload size={18} />
-                    Export CSV
                   </button>
                 </div>
               </div>
 
               {/* Export JSON */}
-              <div className="border border-gray-200 rounded-xl p-5 hover:border-purple-300 transition-colors">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <FiDatabase className="text-purple-600" size={20} />
+              <div className="border border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 hover:border-purple-300 transition-colors">
+                <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <FiDatabase className="text-purple-600 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-800 mb-1">Export Backup Lengkap (JSON)</h3>
-                    <p className="text-sm text-gray-600">
+                    <h3 className="font-semibold text-gray-800 text-sm sm:text-base mb-0.5 sm:mb-1">Export Backup Lengkap (JSON)</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">
                       Export seluruh data dalam format JSON yang bisa di-import kembali ke sistem. 
                       Cocok untuk backup lengkap atau pindah akun dengan data utuh.
                     </p>
@@ -1884,9 +2666,9 @@ const BackupDataPage = () => {
                 <button
                   onClick={handleShowExportModal}
                   disabled={loading}
-                  className="w-full px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-purple-500/30 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-purple-500/30 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 sm:gap-2 text-sm sm:text-base"
                 >
-                  <FiDownload size={18} />
+                  <FiDownload className="w-3 h-3 sm:w-4 sm:h-4" />
                   Export Backup JSON
                 </button>
               </div>
@@ -1894,25 +2676,25 @@ const BackupDataPage = () => {
           </div>
 
           {/* Import Section */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-orange-600 to-red-600 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <FiUpload className="text-white" size={24} />
-                <h2 className="text-xl font-bold text-white">Import Data</h2>
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-orange-600 to-red-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <FiUpload className="text-white w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                <h2 className="text-lg sm:text-xl font-bold text-white">Import Data</h2>
               </div>
-              <p className="text-orange-100 text-sm mt-1">Restore data dari file backup JSON</p>
+              <p className="text-orange-100 text-xs sm:text-sm mt-0.5 sm:mt-1">Restore data dari file backup JSON</p>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
               {/* Import Replace */}
-              <div className="border border-gray-200 rounded-xl p-5 hover:border-orange-300 transition-colors">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <FiRefreshCw className="text-red-600" size={20} />
+              <div className="border border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 hover:border-orange-300 transition-colors">
+                <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <FiRefreshCw className="text-red-600 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-800 mb-1">Import & Ganti Data</h3>
-                    <p className="text-sm text-gray-600">
+                    <h3 className="font-semibold text-gray-800 text-sm sm:text-base mb-0.5 sm:mb-1">Import & Ganti Data</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">
                       <span className="text-red-600 font-semibold">⚠️ PERHATIAN:</span> Semua data yang ada sekarang akan 
                       <span className="font-semibold"> DIHAPUS</span> dan diganti dengan data dari file backup.
                     </p>
@@ -1923,22 +2705,22 @@ const BackupDataPage = () => {
                     setImportType('replace');
                     setShowImportModal(true);
                   }}
-                  className="w-full px-4 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-lg hover:shadow-lg hover:shadow-red-500/30 transition-all font-medium flex items-center justify-center gap-2"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-lg hover:shadow-lg hover:shadow-red-500/30 transition-all font-medium flex items-center justify-center gap-1 sm:gap-2 text-sm sm:text-base"
                 >
-                  <FiRefreshCw size={18} />
+                  <FiRefreshCw className="w-3 h-3 sm:w-4 sm:h-4" />
                   Import & Ganti Semua
                 </button>
               </div>
 
               {/* Import Add */}
-              <div className="border border-gray-200 rounded-xl p-5 hover:border-blue-300 transition-colors">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <FiPlus className="text-blue-600" size={20} />
+              <div className="border border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 hover:border-blue-300 transition-colors">
+                <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <FiPlus className="text-blue-600 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-800 mb-1">Import & Tambahkan Data</h3>
-                    <p className="text-sm text-gray-600">
+                    <h3 className="font-semibold text-gray-800 text-sm sm:text-base mb-0.5 sm:mb-1">Import & Tambahkan Data</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">
                       Data yang ada sekarang <span className="font-semibold">TETAP AMAN</span>. 
                       Data dari file backup akan ditambahkan ke data yang sudah ada.
                     </p>
@@ -1949,19 +2731,19 @@ const BackupDataPage = () => {
                     setImportType('add');
                     setShowImportModal(true);
                   }}
-                  className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all font-medium flex items-center justify-center gap-2"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-blue-500/30 transition-all font-medium flex items-center justify-center gap-1 sm:gap-2 text-sm sm:text-base"
                 >
-                  <FiPlus size={18} />
+                  <FiPlus className="w-3 h-3 sm:w-4 sm:h-4" />
                   Import & Tambahkan
                 </button>
               </div>
 
               {/* Warning Box */}
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                <FiAlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
-                <div className="text-sm text-amber-800">
-                  <p className="font-semibold mb-1">Tips Backup:</p>
-                  <ul className="list-disc list-inside space-y-1 text-amber-700">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-start gap-2 sm:gap-3">
+                <FiAlertCircle className="text-amber-600 flex-shrink-0 mt-0.5 w-4 h-4 sm:w-5 sm:h-5" />
+                <div className="text-xs sm:text-sm text-amber-800">
+                  <p className="font-semibold mb-0.5 sm:mb-1">Tips Backup:</p>
+                  <ul className="list-disc list-inside space-y-0.5 sm:space-y-1 text-amber-700 text-xs sm:text-sm">
                     <li>Pastikan file backup dalam format JSON yang valid</li>
                     <li>Backup data secara berkala untuk keamanan</li>
                     <li>Simpan file backup di tempat yang aman</li>
@@ -2139,6 +2921,11 @@ const BackupDataPage = () => {
                           <span className="font-semibold">{importData.services.length}</span> Layanan
                         </div>
                       )}
+                      {importData.responsibleParties && (
+                        <div className="bg-white rounded px-2 py-1">
+                          <span className="font-semibold">{importData.responsibleParties.length}</span> Penanggung Jawab
+                        </div>
+                      )}
                       {importData.bookings && (
                         <div className="bg-white rounded px-2 py-1">
                           <span className="font-semibold">{importData.bookings.length}</span> Booking
@@ -2159,6 +2946,7 @@ const BackupDataPage = () => {
                       ✅ <span className="font-semibold">
                         {(importSelection.clients?.length || 0) + 
                          (importSelection.services?.length || 0) + 
+                         (importSelection.responsibleParties?.length || 0) +
                          (importSelection.bookings?.length || 0) + 
                          (importSelection.expenses?.length || 0) +
                          (importSelection.expenseCategories?.length || 0)}
@@ -2171,6 +2959,7 @@ const BackupDataPage = () => {
               {/* Duplicate Warning */}
               {(duplicateData.clients?.length > 0 || 
                 duplicateData.services?.length > 0 || 
+                duplicateData.responsibleParties?.length > 0 ||
                 duplicateData.expenseCategories?.length > 0 ||
                 duplicateData.bookings?.length > 0 ||
                 duplicateData.expenses?.length > 0) && (
@@ -2189,6 +2978,9 @@ const BackupDataPage = () => {
                         )}
                         {duplicateData.services?.length > 0 && (
                           <li>{duplicateData.services.length} layanan duplikat (berdasarkan nama & harga)</li>
+                        )}
+                        {duplicateData.responsibleParties?.length > 0 && (
+                          <li>{duplicateData.responsibleParties.length} penanggung jawab duplikat (berdasarkan nama & telepon)</li>
                         )}
                         {duplicateData.expenseCategories?.length > 0 && (
                           <li>{duplicateData.expenseCategories.length} kategori duplikat (berdasarkan nama)</li>
@@ -2398,6 +3190,94 @@ const BackupDataPage = () => {
                               </label>
                             );
                           })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Responsible Parties */}
+                {importData.responsibleParties && importData.responsibleParties.length > 0 && (
+                  <div className="border-2 border-green-200 rounded-xl overflow-hidden">
+                    <div className="bg-green-50 p-4">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-3 cursor-pointer flex-1">
+                          <input
+                            type="checkbox"
+                            checked={(() => {
+                              const nonDuplicateCount = importData.responsibleParties.filter((_, idx) => !duplicateData.responsibleParties?.includes(idx)).length;
+                              return nonDuplicateCount > 0 && importSelection.responsibleParties?.length === nonDuplicateCount;
+                            })()}
+                            onChange={(e) => handleToggleAllImport('responsibleParties', e.target.checked)}
+                            className="w-5 h-5 text-green-600 rounded"
+                          />
+                          <div>
+                            <span className="font-semibold text-gray-800">Data Penanggung Jawab</span>
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-green-600 text-white rounded-full">
+                              {importSelection.responsibleParties?.length || 0} / {importData.responsibleParties.filter((_, idx) => !duplicateData.responsibleParties?.includes(idx)).length} dipilih
+                            </span>
+                            {duplicateData.responsibleParties?.length > 0 && (
+                              <span className="ml-2 px-2 py-0.5 text-xs bg-amber-500 text-white rounded-full">
+                                {duplicateData.responsibleParties.length} duplikat
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                        <button
+                          onClick={() => setExpandedCategories(prev => ({...prev, importResponsibleParties: !prev.importResponsibleParties}))}
+                          className="text-green-600 hover:bg-green-100 p-1 rounded"
+                        >
+                          {expandedCategories.importResponsibleParties ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {expandedCategories.importResponsibleParties && (
+                      <div className="bg-white p-4">
+                        {/* Search */}
+                        <div className="relative mb-3">
+                          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                          <input
+                            type="text"
+                            placeholder="Cari penanggung jawab (nama, telepon, alamat)..."
+                            value={importSearchTerms.responsibleParties || ''}
+                            onChange={(e) => setImportSearchTerms({...importSearchTerms, responsibleParties: e.target.value})}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        {/* Items List with Scroll */}
+                        <div className="max-h-64 overflow-y-auto space-y-1">
+                          {getFilteredImportItems('responsibleParties').map((item, originalIndex) => {
+                            // Find original index in full array
+                            const index = importData.responsibleParties.indexOf(item);
+                            const isDuplicate = duplicateData.responsibleParties?.includes(index);
+                            return (
+                              <label 
+                                key={index} 
+                                className={`flex items-center gap-2 p-2 rounded cursor-pointer ${
+                                  isDuplicate 
+                                    ? 'bg-amber-50 border border-amber-200' 
+                                    : 'hover:bg-green-50'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={importSelection.responsibleParties?.includes(index)}
+                                  onChange={() => handleToggleImportItem('responsibleParties', index)}
+                                  className="w-4 h-4 text-green-600 rounded"
+                                  disabled={isDuplicate}
+                                />
+                                <span className={`text-sm flex-1 ${isDuplicate ? 'text-amber-700' : 'text-gray-700'}`}>
+                                  {getImportDisplayText('responsibleParties', item)}
+                                  {isDuplicate && <span className="ml-2 text-xs font-semibold text-amber-600">[DUPLIKAT]</span>}
+                                </span>
+                              </label>
+                            );
+                          })}
+                          {getFilteredImportItems('responsibleParties').length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-4">Tidak ada data ditemukan</p>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2749,7 +3629,9 @@ const BackupDataPage = () => {
                     type="checkbox"
                     checked={Object.values(exportSelection).every(v => v)}
                     onChange={(e) => handleToggleAll(e.target.checked)}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    disabled={!allData.clients || !allData.services || !allData.responsibleParties || !allData.serviceResponsibleParties || 
+                             !allData.bookings || !allData.payments || !allData.expenses || !allData.expenseCategories}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <span className="font-semibold text-blue-900">Pilih Semua Data</span>
                 </label>
@@ -2814,7 +3696,7 @@ const BackupDataPage = () => {
                         <input
                           type="text"
                           placeholder="Cari klien..."
-                          value={searchTerms.clients}
+                          value={searchTerms.clients || ''}
                           onChange={(e) => setSearchTerms({...searchTerms, clients: e.target.value})}
                           className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
@@ -2889,7 +3771,7 @@ const BackupDataPage = () => {
                         <input
                           type="text"
                           placeholder="Cari layanan..."
-                          value={searchTerms.services}
+                          value={searchTerms.services || ''}
                           onChange={(e) => setSearchTerms({...searchTerms, services: e.target.value})}
                           className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                         />
@@ -2918,6 +3800,94 @@ const BackupDataPage = () => {
                           </label>
                         ))}
                         {getFilteredItems('services').length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-4">Tidak ada data ditemukan</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Responsible Parties with Dropdown */}
+                <div className="border border-gray-200 rounded-xl overflow-hidden hover:border-green-300 transition-colors">
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={exportSelection.responsibleParties}
+                        onChange={(e) => handleToggleCategory('responsibleParties', e.target.checked)}
+                        className="w-5 h-5 text-green-600 rounded focus:ring-2 focus:ring-green-500 mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-800">Data Penanggung Jawab</span>
+                            <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                              {selectedIds.responsibleParties?.length || 0} / {allData.responsibleParties?.length || 0} dipilih
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleToggleDropdown('responsibleParties')}
+                            className="text-green-600 hover:bg-green-50 p-1 rounded"
+                          >
+                            {expandedCategories.responsibleParties ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-600">Nama, nomor telepon, dan alamat penanggung jawab</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {expandedCategories.responsibleParties && (
+                    <div className="border-t border-gray-200 bg-gray-50 p-4">
+                      <div className="relative mb-3">
+                        <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          placeholder="Cari penanggung jawab..."
+                          value={searchTerms.responsibleParties || ''}
+                          onChange={(e) => setSearchTerms({...searchTerms, responsibleParties: e.target.value})}
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        />
+                      </div>
+                      
+                      <label className="flex items-center gap-2 p-2 hover:bg-green-50 rounded cursor-pointer mb-2 border-b border-gray-200">
+                        <input
+                          type="checkbox"
+                          checked={(() => {
+                            const totalItems = allData.responsibleParties?.length || 0;
+                            const selectedCount = selectedIds.responsibleParties?.length || 0;
+                            const isAllSelected = totalItems > 0 && selectedCount === totalItems;
+                            console.log('🔍 [SELECT ALL] responsibleParties:', { totalItems, selectedCount, selectedIds: selectedIds.responsibleParties, isAllSelected });
+                            return isAllSelected;
+                          })()}
+                          onChange={(e) => handleToggleAllInCategory('responsibleParties', e.target.checked)}
+                          className="w-4 h-4 text-green-600 rounded"
+                        />
+                        <span className="text-sm font-semibold text-green-900">Pilih Semua Penanggung Jawab</span>
+                      </label>
+                      
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {getFilteredItems('responsibleParties').map(item => {
+                          const itemId = typeof item.id === 'string' ? parseInt(item.id) : item.id;
+                          const selectedIdsArray = selectedIds.responsibleParties?.map(id => typeof id === 'string' ? parseInt(id) : id) || [];
+                          const isChecked = selectedIdsArray.includes(itemId);
+                          
+                          return (
+                          <label key={item.id} className="flex items-center gap-2 p-2 hover:bg-green-50 rounded cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleItem('responsibleParties', item.id)}
+                              className="w-4 h-4 text-green-600 rounded"
+                            />
+                            <span className="text-sm text-gray-700">
+                              {getDisplayText('responsibleParties', item)} 
+                              {isChecked ? ' ✅' : ' ⭕'}
+                            </span>
+                          </label>
+                          );
+                        })}
+                        {getFilteredItems('responsibleParties').length === 0 && (
                           <p className="text-sm text-gray-500 text-center py-4">Tidak ada data ditemukan</p>
                         )}
                       </div>
@@ -2972,7 +3942,7 @@ const BackupDataPage = () => {
                         <input
                           type="text"
                           placeholder="Cari booking..."
-                          value={searchTerms.bookings}
+                          value={searchTerms.bookings || ''}
                           onChange={(e) => setSearchTerms({...searchTerms, bookings: e.target.value})}
                           className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         />
@@ -3063,7 +4033,7 @@ const BackupDataPage = () => {
                         <input
                           type="text"
                           placeholder="Cari kategori..."
-                          value={searchTerms.expenseCategories}
+                          value={searchTerms.expenseCategories || ''}
                           onChange={(e) => setSearchTerms({...searchTerms, expenseCategories: e.target.value})}
                           className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                         />
@@ -3143,7 +4113,7 @@ const BackupDataPage = () => {
                         <input
                           type="text"
                           placeholder="Cari pengeluaran..."
-                          value={searchTerms.expenses}
+                          value={searchTerms.expenses || ''}
                           onChange={(e) => setSearchTerms({...searchTerms, expenses: e.target.value})}
                           className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                         />
@@ -3218,20 +4188,16 @@ const BackupDataPage = () => {
       {/* Modal Export File Name */}
       {showExportFileModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm sm:max-w-md w-full">
             {/* Header */}
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                  exportFileFormat === 'xlsx' 
-                    ? 'bg-green-100' 
-                    : 'bg-teal-100'
-                }`}>
-                  <FiDownload className={exportFileFormat === 'xlsx' ? 'text-green-600' : 'text-teal-600'} size={24} />
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-green-100">
+                  <FiDownload className="text-green-600" size={24} />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-gray-800">
-                    Export ke {exportFileFormat === 'xlsx' ? 'Excel' : 'CSV'}
+                    Export ke Excel
                   </h3>
                   <p className="text-sm text-gray-500">Atur nama file sebelum mengexport</p>
                 </div>
@@ -3247,17 +4213,17 @@ const BackupDataPage = () => {
                 <div className="relative">
                   <input
                     type="text"
-                    value={exportFileName}
+                    value={exportFileName || ''}
                     onChange={(e) => setExportFileName(e.target.value)}
                     className="w-full px-4 py-2.5 pr-20 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="backup_2025-11-07"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-medium">
-                    .{exportFileFormat}
+                    .xlsx
                   </span>
                 </div>
                 <p className="mt-1.5 text-xs text-gray-500">
-                  File akan disimpan sebagai: <span className="font-medium text-gray-700">{exportFileName}.{exportFileFormat}</span>
+                  File akan disimpan sebagai: <span className="font-medium text-gray-700">{exportFileName}.xlsx</span>
                 </p>
               </div>
 
@@ -3279,11 +4245,7 @@ const BackupDataPage = () => {
               <button
                 onClick={handleExportExcel}
                 disabled={!exportFileName.trim()}
-                className={`flex-1 px-4 py-2.5 rounded-lg transition-all font-medium text-white flex items-center justify-center gap-2 ${
-                  exportFileFormat === 'xlsx'
-                    ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:shadow-lg hover:shadow-green-500/30'
-                    : 'bg-gradient-to-r from-teal-600 to-cyan-600 hover:shadow-lg hover:shadow-teal-500/30'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:shadow-lg hover:shadow-green-500/30 rounded-lg transition-all font-medium text-white flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FiDownload size={18} />
                 Export Sekarang
