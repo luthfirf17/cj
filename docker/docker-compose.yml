@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -40,7 +38,7 @@ services:
       DB_PASSWORD: 1234
       JWT_SECRET: catat-jasamu-secret-key-2025
       JWT_EXPIRE: 7d
-      FRONTEND_URL: http://72.61.142.236:3000
+      FRONTEND_URL: https://catatjasamu.com
     ports:
       - "5001:5001"
     depends_on:
