@@ -12,7 +12,7 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/migrations:/docker-entrypoint-initdb.d
+      - ../backend/src/migrations:/docker-entrypoint-initdb.d
     networks:
       - catatjasamu-network
     healthcheck:
@@ -24,7 +24,7 @@ services:
   # Backend API
   backend:
     build:
-      context: ./backend
+      context: ../backend
       dockerfile: Dockerfile
     container_name: catatjasamu-backend
     restart: unless-stopped
@@ -47,13 +47,13 @@ services:
     networks:
       - catatjasamu-network
     volumes:
-      - ./backend:/app
+      - ../backend:/app
       - /app/node_modules
 
   # Frontend
   frontend:
     build:
-      context: ./frontend
+      context: ../frontend
       dockerfile: Dockerfile
     container_name: catatjasamu-frontend
     restart: unless-stopped
@@ -66,7 +66,7 @@ services:
     networks:
       - catatjasamu-network
     volumes:
-      - ./frontend/dist:/usr/share/nginx/html
+      - ../frontend/dist:/usr/share/nginx/html
 
 networks:
   catatjasamu-network:
