@@ -2143,8 +2143,36 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
       expenseParams
     );
     
+    // Get total tax from bookings
+    const taxResult = await query(
+      `SELECT 
+        COALESCE(
+          SUM(
+            CASE 
+              WHEN b.status = 'cancelled' AND COALESCE(p.amount_paid, 0) = 0 THEN 0
+              ELSE 
+                CASE 
+                  WHEN b.notes IS NOT NULL AND b.notes != '' THEN
+                    CAST(b.total_price AS DECIMAL) * 
+                    COALESCE(CAST((b.notes::json->>'tax_percentage') AS DECIMAL), 0) / 100
+                  ELSE 0
+                END
+            END
+          ), 0
+        ) as total_tax
+      FROM bookings b
+      LEFT JOIN (
+        SELECT booking_id, SUM(amount) as amount_paid
+        FROM payments
+        GROUP BY booking_id
+      ) p ON b.id = p.booking_id
+      WHERE (b.user_id = $1 OR $1 IS NULL) ${dateFilter}`,
+      params
+    );
+    
     const revenue = revenueResult.rows[0];
     const expenses = expenseResult.rows[0];
+    const tax = taxResult.rows[0];
     
     res.json({
       success: true,
@@ -2153,7 +2181,8 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
         total_paid: parseFloat(revenue.total_paid),
         total_unpaid: parseFloat(revenue.total_unpaid),
         total_expenses: parseFloat(expenses.total_expenses),
-        net_income: parseFloat(revenue.total_paid) - parseFloat(expenses.total_expenses)
+        total_tax: parseFloat(tax.total_tax),
+        net_income: parseFloat(revenue.total_paid) - parseFloat(expenses.total_expenses) - parseFloat(tax.total_tax)
       }
     });
   } catch (error) {

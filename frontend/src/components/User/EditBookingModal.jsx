@@ -1690,6 +1690,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 className="block w-full rounded-lg border border-gray-300 px-3 py-2 bg-white text-gray-900 cursor-not-allowed"
               />
               <div className="mt-1 space-y-1">
+                <p className="text-xs text-gray-500">Total layanan sebelum diskon</p>
                 {formData.discount_value > 0 && (
                   <p className="text-xs text-green-600">
                     Harga setelah diskon: Rp {subtotalAmount.toLocaleString('id-ID')}
@@ -1701,7 +1702,6 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                   </p>
                 )}
               </div>
-              <p className="mt-1 text-xs text-gray-500">Total layanan sebelum diskon</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
