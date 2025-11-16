@@ -1961,7 +1961,6 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
                     onChange={handleChange}
                     placeholder="0"
                     className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
-                    disabled={formData.discount_type === 'persen' && formData.discount_value > 0}
                   />
                   <p className="mt-1 text-xs text-gray-500">Rupiah (Rp)</p>
                 </div>
@@ -1975,7 +1974,6 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
                     min="0"
                     max="100"
                     className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
-                    disabled={formData.discount_type === 'rupiah' && formData.discount_value > 0}
                   />
                   <p className="mt-1 text-xs text-gray-500">Persen (%)</p>
                 </div>

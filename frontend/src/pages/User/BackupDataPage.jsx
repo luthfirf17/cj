@@ -1593,7 +1593,7 @@ const BackupDataPage = () => {
               // Check key fields that user actually entered
               const fieldsToCompare = ['user_notes', 'booking_date', 'booking_time', 
                                        'booking_date_end', 'booking_time_end', 'booking_days',
-                                       'discount', 'tax_percentage', 'payment_status', 'amount_paid'];
+                                       'discount', 'discount_type', 'tax_percentage', 'payment_status', 'amount_paid'];
               
               const basicFieldsMatch = fieldsToCompare.every(field => compareField(field));
               
@@ -1916,6 +1916,13 @@ const BackupDataPage = () => {
           // Ignore JSON parse errors
         }
         
+        // Check for discount information (from backup data or notes)
+        let discountText = '';
+        if (item.discount_value && item.discount_value > 0) {
+          const discountType = item.discount_type === 'persen' ? '%' : 'Rp';
+          discountText = ` - Diskon: ${item.discount_value}${discountType}`;
+        }
+        
         // Try to get client name from importData if available
         if (importData && importData.clients && item.client_id) {
           const client = importData.clients.find(c => c.id === item.client_id);
@@ -1923,7 +1930,7 @@ const BackupDataPage = () => {
         }
         
         const locationInfo = item.location_name ? ` 📍 ${item.location_name}` : '';
-        return `${bookingDate} ${item.booking_time} - ${clientName} - ${serviceName}${quantityText}${locationInfo} - Rp ${parseFloat(item.total_price).toLocaleString('id-ID')} (${item.status})`;
+        return `${bookingDate} ${item.booking_time} - ${clientName} - ${serviceName}${quantityText}${discountText}${locationInfo} - Rp ${parseFloat(item.total_price).toLocaleString('id-ID')} (${item.status})`;
       case 'expenses':
         const expenseDate = new Date(item.expense_date).toLocaleDateString('id-ID');
         return `${expenseDate} - ${item.description} - Rp ${parseFloat(item.amount).toLocaleString('id-ID')}`;

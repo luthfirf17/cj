@@ -2512,6 +2512,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
           { header: 'Durasi (Hari)', key: 'booking_days', width: 15 },
           { header: 'Biaya Tambahan', key: 'additional_fees', width: 30 },
           { header: 'Diskon', key: 'discount', width: 15 },
+          { header: 'Tipe Diskon', key: 'discount_type', width: 15 },
           { header: 'Pajak (%)', key: 'tax_percentage', width: 12 },
           { header: 'Total Harga', key: 'total_price', width: 18 },
           { header: 'Status Booking', key: 'status', width: 15 },
@@ -2579,6 +2580,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
 
               // Extract discount and tax
               bookingDetails.discount = notesObj.discount || 0;
+              bookingDetails.discount_type = notesObj.discount_type || 'rupiah';
               bookingDetails.tax_percentage = notesObj.tax_percentage || 0;
 
               // Extract user notes
@@ -2605,6 +2607,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
             booking_days: bookingDetails.booking_days,
             additional_fees: bookingDetails.additional_fees,
             discount: bookingDetails.discount || 0,
+            discount_type: bookingDetails.discount_type || 'rupiah',
             tax_percentage: bookingDetails.tax_percentage || 0,
             total_price: row.total_price || 0,
             status: row.status || '',
@@ -3092,8 +3095,28 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
       
       bookingsQuery += ' ORDER BY b.created_at';
       const bookings = await query(bookingsQuery, params);
-      backup.data.bookings = bookings.rows;
-      console.log(`  ✅ Exported ${bookings.rows.length} bookings (with client & service names)`);
+      
+      // Parse booking details from notes to include discount_value and discount_type
+      const parsedBookings = bookings.rows.map(booking => {
+        let bookingDetails = null;
+        try {
+          if (booking.notes && booking.notes.trim().startsWith('{')) {
+            bookingDetails = JSON.parse(booking.notes);
+          }
+        } catch (parseError) {
+          console.log('Notes is not JSON format for booking', booking.id, 'in export');
+        }
+        
+        return {
+          ...booking,
+          discount_value: bookingDetails?.discount || 0,
+          discount_type: bookingDetails?.discount_type || 'rupiah',
+          booking_details: bookingDetails
+        };
+      });
+      
+      backup.data.bookings = parsedBookings;
+      console.log(`  ✅ Exported ${parsedBookings.length} bookings (with parsed discount data)`);
     } else {
       backup.data.bookings = [];
       console.log(`  ⏭️  Skipped bookings`);
@@ -3520,6 +3543,15 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
               if (booking.notes) {
                 try {
                   const notesObj = JSON.parse(booking.notes);
+                  
+                  // Ensure discount_value and discount_type are included in notes
+                  if (booking.discount_value !== undefined) {
+                    notesObj.discount = booking.discount_value;
+                  }
+                  if (booking.discount_type !== undefined) {
+                    notesObj.discount_type = booking.discount_type;
+                  }
+                  
                   if (notesObj.services && Array.isArray(notesObj.services)) {
                     // Map old service IDs to new IDs in the services array
                     notesObj.services = notesObj.services.map(service => {
@@ -3538,13 +3570,33 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
                       
                       return updatedService;
                     });
-                    updatedNotes = JSON.stringify(notesObj);
                     console.log(`  🔄 Mapped ${notesObj.services.length} service IDs and responsible party IDs in booking notes`);
                   }
+                  
+                  updatedNotes = JSON.stringify(notesObj);
                 } catch (e) {
-                  // If notes is not JSON, keep original
-                  console.log(`  ℹ️  Notes is not JSON format, keeping as is`);
+                  // If notes is not JSON, create new JSON with discount data
+                  if (booking.discount_value !== undefined || booking.discount_type !== undefined) {
+                    const newNotesObj = {
+                      discount: booking.discount_value || 0,
+                      discount_type: booking.discount_type || 'rupiah',
+                      user_notes: booking.notes || ''
+                    };
+                    updatedNotes = JSON.stringify(newNotesObj);
+                    console.log(`  📝 Created new JSON notes with discount data for booking`);
+                  } else {
+                    console.log(`  ℹ️  Notes is not JSON format, keeping as is`);
+                  }
                 }
+              } else if (booking.discount_value !== undefined || booking.discount_type !== undefined) {
+                // If no notes but has discount data, create new JSON notes
+                const newNotesObj = {
+                  discount: booking.discount_value || 0,
+                  discount_type: booking.discount_type || 'rupiah',
+                  user_notes: ''
+                };
+                updatedNotes = JSON.stringify(newNotesObj);
+                console.log(`  📝 Created new JSON notes with discount data for booking`);
               }
 
               const result = await query(
