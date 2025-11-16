@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 5001
-      NODE_ENV: production
+      NODE_ENV: development
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: catat_jasamu_db
@@ -38,7 +38,7 @@ services:
       DB_PASSWORD: 1234
       JWT_SECRET: catat-jasamu-secret-key-2025
       JWT_EXPIRE: 7d
-      FRONTEND_URL: https://catatjasamu.com
+      FRONTEND_URL: http://localhost:3000
     ports:
       - "5001:5001"
     depends_on:
@@ -58,7 +58,7 @@ services:
     container_name: catatjasamu-frontend
     restart: unless-stopped
     environment:
-      VITE_API_URL: https://catatjasamu.com
+      VITE_API_URL: http://localhost:5001
     ports:
       - "3000:80"
     depends_on:

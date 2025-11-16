@@ -9,6 +9,7 @@ import {
   FiSettings,
   FiLogOut,
   FiX,
+  FiCloud,
 } from 'react-icons/fi';
 import Logo from '../Common/Logo';
 
@@ -21,6 +22,7 @@ const AdminSidebar = ({ isMobileOpen, setIsMobileOpen }) => {
     { path: '/admin/services', icon: FiBriefcase, label: 'Layanan' },
     { path: '/admin/transactions', icon: FiDollarSign, label: 'Transaksi' },
     { path: '/admin/reports', icon: FiBarChart2, label: 'Laporan' },
+    { path: '/admin/backup-restore', icon: FiCloud, label: 'Backup & Restore' },
     { path: '/admin/settings', icon: FiSettings, label: 'Pengaturan' },
   ];
 

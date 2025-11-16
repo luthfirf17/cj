@@ -14,6 +14,7 @@ import Register from './pages/Auth/Register'
 import AdminDashboard from './pages/Admin/AdminDashboard'
 import UserManagement from './pages/Admin/UserManagement'
 import AdminSettings from './pages/Admin/AdminSettings'
+import BackupRestore from './pages/Admin/BackupRestore'
 
 // User Pages
 import UserDashboard from './pages/User/UserDashboard'
@@ -48,6 +49,7 @@ function App() {
               <Route path="users" element={<UserManagement />} />
               <Route path="users/:id" element={<div>User Detail (Coming Soon)</div>} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="backup-restore" element={<BackupRestore />} />
               
               {/* Transaction Routes */}
               <Route path="transactions" element={<div>Transaction List (Coming Soon)</div>} />

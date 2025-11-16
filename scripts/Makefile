@@ -82,17 +82,17 @@ rebuild: ## Rebuild dan restart semua
 # Development commands
 dev: ## Start aplikasi dalam development mode
 	@echo "$(GREEN)🚀 Starting application (development mode)...$(NC)"
-	docker-compose -f docker-compose.dev.yml up -d
+	docker-compose -f ../docker/docker-compose.dev.yml up -d
 	@echo "$(GREEN)✅ Development mode started!$(NC)"
 	@echo "Frontend: http://localhost:3000 (hot-reload enabled)"
 	@echo "Backend:  http://localhost:5001 (nodemon enabled)"
 
 dev-logs: ## Tampilkan logs (development)
-	docker-compose -f docker-compose.dev.yml logs -f
+	docker-compose -f ../docker/docker-compose.dev.yml logs -f
 
 dev-down: ## Stop aplikasi (development)
 	@echo "$(YELLOW)⏸️  Stopping development mode...$(NC)"
-	docker-compose -f docker-compose.dev.yml down
+	docker-compose -f ../docker/docker-compose.dev.yml down
 	@echo "$(GREEN)✅ Development mode stopped!$(NC)"
 
 # Database commands
