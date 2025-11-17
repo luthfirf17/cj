@@ -24,6 +24,10 @@ const BackupDataPage = () => {
     totalClients: 0,
     totalServices: 0
   });
+  const [dataSize, setDataSize] = useState({
+    totalSize: 0,
+    formattedSize: '0 KB'
+  });
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showExportFileModal, setShowExportFileModal] = useState(false);
@@ -116,6 +120,7 @@ const BackupDataPage = () => {
 
   useEffect(() => {
     fetchDataStats();
+    calculateDataSize();
   }, []);
 
   const fetchDataStats = async () => {
@@ -126,6 +131,67 @@ const BackupDataPage = () => {
       }
     } catch (error) {
       console.error('Error fetching stats:', error);
+    }
+  };
+
+  // Calculate data size in MB/GB
+  const calculateDataSize = async () => {
+    try {
+      setLoading(true);
+      const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, bookingsRes, paymentsRes, expensesRes, categoriesRes] = await Promise.all([
+        api.get('/clients'),
+        api.get('/services'),
+        api.get('/user/responsible-parties'),
+        api.get('/user/service-responsible-parties'),
+        api.get('/bookings'),
+        api.get('/payments'),
+        api.get('/expenses'),
+        api.get('/expense-categories')
+      ]);
+
+      // Calculate size of all data combined
+      const allData = {
+        clients: clientsRes.data || [],
+        services: servicesRes.data?.data || [],
+        responsibleParties: responsiblePartiesRes.data?.data || [],
+        serviceResponsibleParties: serviceResponsiblePartiesRes.data?.data || [],
+        bookings: bookingsRes.data || [],
+        payments: paymentsRes.data || [],
+        expenses: expensesRes.data || [],
+        expenseCategories: categoriesRes.data || []
+      };
+
+      // Calculate size in bytes
+      const dataString = JSON.stringify(allData);
+      const sizeInBytes = new Blob([dataString]).size;
+
+      // Convert to appropriate unit (KB, MB, GB)
+      let size = sizeInBytes;
+      let unit = 'B';
+
+      if (sizeInBytes >= 1024 * 1024 * 1024) { // >= 1 GB
+        size = sizeInBytes / (1024 * 1024 * 1024);
+        unit = 'GB';
+      } else if (sizeInBytes >= 1024 * 1024) { // >= 1 MB
+        size = sizeInBytes / (1024 * 1024);
+        unit = 'MB';
+      } else if (sizeInBytes >= 1024) { // >= 1 KB
+        size = sizeInBytes / 1024;
+        unit = 'KB';
+      }
+
+      setDataSize({
+        totalSize: sizeInBytes,
+        formattedSize: `${size.toFixed(2)} ${unit}`
+      });
+    } catch (error) {
+      console.error('Error calculating data size:', error);
+      setDataSize({
+        totalSize: 0,
+        formattedSize: '0 KB'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -2486,6 +2552,7 @@ const BackupDataPage = () => {
         setImportFile(null);
         setImportData(null);
         fetchDataStats();
+        calculateDataSize();
       }
     } catch (error) {
       console.error('Error importing data:', error);
@@ -2572,7 +2639,7 @@ const BackupDataPage = () => {
         )}
 
         {/* Data Statistics */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
               <span className="text-xs sm:text-sm text-gray-600 font-medium">Total Booking</span>
@@ -2616,6 +2683,25 @@ const BackupDataPage = () => {
             </div>
             <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">{dataStats.totalServices}</p>
             <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Data layanan tersedia</p>
+          </div>
+
+          <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-xs sm:text-sm text-gray-600 font-medium">Ukuran Data</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={calculateDataSize}
+                  disabled={loading}
+                  className="text-indigo-500 hover:text-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Refresh ukuran data"
+                >
+                  <FiRefreshCw className={`w-3 h-3 sm:w-4 sm:h-4 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+                <FiDatabase className="text-indigo-500 w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
+              </div>
+            </div>
+            <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">{dataSize.formattedSize}</p>
+            <p className="text-xs text-gray-500 mt-0.5 sm:mt-1">Total ukuran data Anda</p>
           </div>
         </div>
 

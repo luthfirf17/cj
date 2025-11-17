@@ -156,269 +156,353 @@ const AdminSettings = () => {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Admin Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Manage your admin account settings
-        </p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6">
+      <div className="max-w-4xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="text-center space-y-4">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-100 via-blue-200 to-slate-300 bg-clip-text text-transparent tracking-wider">
+            Admin Settings
+          </h1>
+          <p className="text-slate-400 text-lg font-medium">
+            Manage your admin account settings with terminal precision
+          </p>
+          <div className="w-24 h-1 bg-gradient-to-r from-blue-500 to-cyan-400 mx-auto rounded-full"></div>
+        </div>
 
-      {/* Message Alert */}
-      {message.text && (
-        <div
-          className={`rounded-lg p-4 ${
-            message.type === 'success'
-              ? 'bg-green-50 text-green-800 border border-green-200'
-              : 'bg-red-50 text-red-800 border border-red-200'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {message.type === 'success' ? (
-              <CheckCircleIcon className="h-5 w-5" />
-            ) : (
-              <XCircleIcon className="h-5 w-5" />
+        {/* Message Alert */}
+        {message.text && (
+          <div
+            className={`rounded-xl p-4 border backdrop-blur-md shadow-2xl animate-in slide-in-from-top-2 duration-300 ${
+              message.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                : 'bg-red-500/10 border-red-500/20 text-red-300'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              {message.type === 'success' ? (
+                <CheckCircleIcon className="h-6 w-6 text-emerald-400" />
+              ) : (
+                <XCircleIcon className="h-6 w-6 text-red-400" />
+              )}
+              <p className="text-sm font-semibold">{message.text}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Terminal-like Container */}
+        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden">
+          {/* Terminal Header */}
+          <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600/50 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex gap-2">
+                <div className="w-3 h-3 bg-red-500 rounded-full hover:bg-red-400 transition-colors cursor-pointer"></div>
+                <div className="w-3 h-3 bg-yellow-500 rounded-full hover:bg-yellow-400 transition-colors cursor-pointer"></div>
+                <div className="w-3 h-3 bg-green-500 rounded-full hover:bg-green-400 transition-colors cursor-pointer"></div>
+              </div>
+              <div className="text-slate-400 text-sm font-mono">
+                admin@terminal:~$
+              </div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="border-b border-slate-700/50 bg-slate-800/50">
+            <nav className="flex">
+              {tabs.map((tab, index) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-3 px-6 py-4 text-sm font-semibold transition-all duration-300 relative group ${
+                    activeTab === tab.id
+                      ? 'text-cyan-300 bg-slate-700/50 border-b-2 border-cyan-400'
+                      : 'text-slate-400 hover:text-slate-300 hover:bg-slate-800/30'
+                  }`}
+                >
+                  <tab.icon className={`h-5 w-5 transition-all duration-300 ${
+                    activeTab === tab.id ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-400'
+                  }`} />
+                  {tab.name}
+                  {activeTab === tab.id && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-400 to-blue-500 animate-in slide-in-from-left-1"></div>
+                  )}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Tab Content */}
+          <div className="p-8">
+            {/* Profile Tab */}
+            {activeTab === 'profile' && (
+              <form onSubmit={handleUpdateProfile} className="space-y-8 animate-in fade-in-0 duration-500">
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
+                      <UserCircleIcon className="h-5 w-5 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-200">
+                      Profile Information
+                    </h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label htmlFor="full_name" className="block text-sm font-semibold text-slate-300">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        id="full_name"
+                        value={profile.full_name}
+                        onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70"
+                        placeholder="Enter your full name"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="email" className="block text-sm font-semibold text-slate-300">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        id="email"
+                        value={profile.email}
+                        onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70"
+                        placeholder="Enter your email"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label htmlFor="phone" className="block text-sm font-semibold text-slate-300">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        id="phone"
+                        value={profile.phone || ''}
+                        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70"
+                        placeholder="Enter your phone number"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-6 border-t border-slate-700/50">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-8 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    {loading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Saving...
+                      </div>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </button>
+                </div>
+              </form>
             )}
-            <p className="text-sm font-medium">{message.text}</p>
+
+            {/* Password Tab */}
+            {activeTab === 'password' && (
+              <form onSubmit={handleUpdatePassword} className="space-y-8 animate-in fade-in-0 duration-500">
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg flex items-center justify-center">
+                      <KeyIcon className="h-5 w-5 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-200">
+                      Change Password
+                    </h3>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label htmlFor="currentPassword" className="block text-sm font-semibold text-slate-300">
+                        Current Password
+                      </label>
+                      <input
+                        type="password"
+                        id="currentPassword"
+                        value={passwordData.currentPassword}
+                        onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70"
+                        placeholder="Enter current password"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label htmlFor="newPassword" className="block text-sm font-semibold text-slate-300">
+                          New Password
+                        </label>
+                        <input
+                          type="password"
+                          id="newPassword"
+                          value={passwordData.newPassword}
+                          onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                          className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70"
+                          placeholder="Enter new password"
+                          required
+                          minLength={6}
+                        />
+                        <p className="text-xs text-slate-500">
+                          Must be at least 6 characters
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label htmlFor="confirmPassword" className="block text-sm font-semibold text-slate-300">
+                          Confirm New Password
+                        </label>
+                        <input
+                          type="password"
+                          id="confirmPassword"
+                          value={passwordData.confirmPassword}
+                          onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                          className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70"
+                          placeholder="Confirm new password"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-6 border-t border-slate-700/50">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-8 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    {loading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Updating...
+                      </div>
+                    ) : (
+                      'Update Password'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* PIN Tab */}
+            {activeTab === 'pin' && (
+              <form onSubmit={handleUpdatePin} className="space-y-8 animate-in fade-in-0 duration-500">
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
+                      <ShieldCheckIcon className="h-5 w-5 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-200">
+                      Change Security PIN
+                    </h3>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label htmlFor="currentPin" className="block text-sm font-semibold text-slate-300">
+                        Current PIN
+                      </label>
+                      <input
+                        type="password"
+                        id="currentPin"
+                        value={pinData.currentPin}
+                        onChange={(e) => setPinData({ ...pinData, currentPin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                        className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70 font-mono text-center tracking-widest"
+                        placeholder="000000"
+                        required
+                        pattern="\d{6}"
+                        maxLength={6}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label htmlFor="newPin" className="block text-sm font-semibold text-slate-300">
+                          New PIN
+                        </label>
+                        <input
+                          type="password"
+                          id="newPin"
+                          value={pinData.newPin}
+                          onChange={(e) => setPinData({ ...pinData, newPin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                          className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70 font-mono text-center tracking-widest"
+                          placeholder="000000"
+                          required
+                          pattern="\d{6}"
+                          maxLength={6}
+                        />
+                        <p className="text-xs text-slate-500">
+                          Must be exactly 6 digits
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label htmlFor="confirmPin" className="block text-sm font-semibold text-slate-300">
+                          Confirm New PIN
+                        </label>
+                        <input
+                          type="password"
+                          id="confirmPin"
+                          value={pinData.confirmPin}
+                          onChange={(e) => setPinData({ ...pinData, confirmPin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                          className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-xl text-slate-200 placeholder-slate-500 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 focus:outline-none transition-all duration-300 hover:border-slate-500/70 font-mono text-center tracking-widest"
+                          placeholder="000000"
+                          required
+                          pattern="\d{6}"
+                          maxLength={6}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                    <div className="flex items-start gap-3">
+                      <ShieldCheckIcon className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-amber-300 mb-1">
+                          Security Notice
+                        </p>
+                        <p className="text-sm text-amber-200/80">
+                          Your security PIN is used to access sensitive features. Make sure to remember it and keep it secure.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-6 border-t border-slate-700/50">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    {loading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Updating...
+                      </div>
+                    ) : (
+                      'Update PIN'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
-      )}
-
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.id
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <tab.icon className="h-5 w-5" />
-              {tab.name}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        {/* Profile Tab */}
-        {activeTab === 'profile' && (
-          <form onSubmit={handleUpdateProfile} className="space-y-6">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Profile Information
-              </h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="full_name" className="block text-sm font-medium text-gray-700">
-                    Full Name
-                  </label>
-                  <input
-                    type="text"
-                    id="full_name"
-                    value={profile.full_name}
-                    onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    value={profile.email}
-                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    id="phone"
-                    value={profile.phone || ''}
-                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-              >
-                {loading ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Password Tab */}
-        {activeTab === 'password' && (
-          <form onSubmit={handleUpdatePassword} className="space-y-6">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Change Password
-              </h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700">
-                    Current Password
-                  </label>
-                  <input
-                    type="password"
-                    id="currentPassword"
-                    value={passwordData.currentPassword}
-                    onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">
-                    New Password
-                  </label>
-                  <input
-                    type="password"
-                    id="newPassword"
-                    value={passwordData.newPassword}
-                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                    minLength={6}
-                  />
-                  <p className="mt-1 text-sm text-gray-500">
-                    Must be at least 6 characters
-                  </p>
-                </div>
-
-                <div>
-                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                    Confirm New Password
-                  </label>
-                  <input
-                    type="password"
-                    id="confirmPassword"
-                    value={passwordData.confirmPassword}
-                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-              >
-                {loading ? 'Updating...' : 'Update Password'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* PIN Tab */}
-        {activeTab === 'pin' && (
-          <form onSubmit={handleUpdatePin} className="space-y-6">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Change Security PIN
-              </h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="currentPin" className="block text-sm font-medium text-gray-700">
-                    Current PIN
-                  </label>
-                  <input
-                    type="password"
-                    id="currentPin"
-                    value={pinData.currentPin}
-                    onChange={(e) => setPinData({ ...pinData, currentPin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                    pattern="\d{6}"
-                    maxLength={6}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="newPin" className="block text-sm font-medium text-gray-700">
-                    New PIN
-                  </label>
-                  <input
-                    type="password"
-                    id="newPin"
-                    value={pinData.newPin}
-                    onChange={(e) => setPinData({ ...pinData, newPin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                    pattern="\d{6}"
-                    maxLength={6}
-                  />
-                  <p className="mt-1 text-sm text-gray-500">
-                    Must be exactly 6 digits
-                  </p>
-                </div>
-
-                <div>
-                  <label htmlFor="confirmPin" className="block text-sm font-medium text-gray-700">
-                    Confirm New PIN
-                  </label>
-                  <input
-                    type="password"
-                    id="confirmPin"
-                    value={pinData.confirmPin}
-                    onChange={(e) => setPinData({ ...pinData, confirmPin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                    pattern="\d{6}"
-                    maxLength={6}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-                <p className="text-sm text-yellow-800">
-                  <strong>Important:</strong> Your security PIN is used to access sensitive features. Make sure to remember it and keep it secure.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-              >
-                {loading ? 'Updating...' : 'Update PIN'}
-              </button>
-            </div>
-          </form>
-        )}
       </div>
     </div>
   );

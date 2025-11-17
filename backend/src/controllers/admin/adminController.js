@@ -429,7 +429,7 @@ const exportFullBackup = async (req, res) => {
 
     // Export expense categories
     const expenseCategoriesResult = await query(`
-      SELECT id, user_id, name, description, created_at, updated_at
+      SELECT id, user_id, name, color, icon, is_default, created_at, updated_at
       FROM expense_categories 
       ORDER BY id
     `);
@@ -437,8 +437,8 @@ const exportFullBackup = async (req, res) => {
 
     // Export company settings
     const companySettingsResult = await query(`
-      SELECT id, user_id, company_name, address, phone, email,
-             bank_name, account_number, account_holder, logo_url,
+      SELECT id, user_id, company_name, company_address, company_phone, company_email,
+             bank_name, account_number, account_holder_name, company_logo_url,
              created_at, updated_at
       FROM company_settings 
       ORDER BY id
@@ -447,9 +447,8 @@ const exportFullBackup = async (req, res) => {
 
     // Export responsible parties
     const responsiblePartiesResult = await query(`
-      SELECT id, user_id, name, phone, email, relationship,
-             created_at, updated_at
-      FROM responsible_parties 
+      SELECT id, user_id, name, phone, address, created_at, updated_at
+      FROM responsible_parties
       ORDER BY id
     `);
     backup.data.responsibleParties = responsiblePartiesResult.rows;
@@ -578,9 +577,9 @@ const importFullBackup = async (req, res) => {
       if (backupData.data.expenseCategories && backupData.data.expenseCategories.length > 0) {
         for (const category of backupData.data.expenseCategories) {
           await query(`
-            INSERT INTO expense_categories (id, user_id, name, description, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
-          `, [category.id, category.user_id, category.name, category.description, category.created_at, category.updated_at]);
+            INSERT INTO expense_categories (id, user_id, name, color, icon, is_default, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `, [category.id, category.user_id, category.name, category.color, category.icon, category.is_default, category.created_at, category.updated_at]);
         }
       }
 
@@ -598,9 +597,9 @@ const importFullBackup = async (req, res) => {
       if (backupData.data.companySettings && backupData.data.companySettings.length > 0) {
         for (const setting of backupData.data.companySettings) {
           await query(`
-            INSERT INTO company_settings (id, user_id, company_name, address, phone, email, bank_name, account_number, account_holder, logo_url, created_at, updated_at)
+            INSERT INTO company_settings (id, user_id, company_name, company_address, company_phone, company_email, bank_name, account_number, account_holder_name, company_logo_url, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          `, [setting.id, setting.user_id, setting.company_name, setting.address, setting.phone, setting.email, setting.bank_name, setting.account_number, setting.account_holder, setting.logo_url, setting.created_at, setting.updated_at]);
+          `, [setting.id, setting.user_id, setting.company_name, setting.company_address, setting.company_phone, setting.company_email, setting.bank_name, setting.account_number, setting.account_holder_name, setting.company_logo_url, setting.created_at, setting.updated_at]);
         }
       }
 
@@ -608,9 +607,9 @@ const importFullBackup = async (req, res) => {
       if (backupData.data.responsibleParties && backupData.data.responsibleParties.length > 0) {
         for (const party of backupData.data.responsibleParties) {
           await query(`
-            INSERT INTO responsible_parties (id, user_id, name, phone, email, relationship, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          `, [party.id, party.user_id, party.name, party.phone, party.email, party.relationship, party.created_at, party.updated_at]);
+            INSERT INTO responsible_parties (id, user_id, name, phone, address, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `, [party.id, party.user_id, party.name, party.phone, party.address, party.created_at, party.updated_at]);
         }
       }
 
@@ -658,7 +657,8 @@ const getBackupStatus = async (req, res) => {
     // Get database statistics
     const stats = {
       tables: {},
-      lastBackup: null
+      lastBackup: null,
+      databaseSize: null
     };
 
     // Count records in each table
@@ -668,6 +668,36 @@ const getBackupStatus = async (req, res) => {
       const result = await query(`SELECT COUNT(*) as count FROM ${table}`);
       stats.tables[table] = result.rows[0].count;
     }
+
+    // Get database size
+    const dbSizeResult = await query(`SELECT pg_database_size(current_database()) as size_bytes`);
+    const sizeBytes = parseInt(dbSizeResult.rows[0].size_bytes);
+    
+    // Convert to appropriate unit
+    let sizeValue, sizeUnit;
+    if (sizeBytes < 1024 * 1024) { // Less than 1MB
+      sizeValue = (sizeBytes / 1024).toFixed(2);
+      sizeUnit = 'KB';
+    } else if (sizeBytes < 1024 * 1024 * 1024) { // Less than 1GB
+      sizeValue = (sizeBytes / (1024 * 1024)).toFixed(2);
+      sizeUnit = 'MB';
+    } else { // 1GB or more
+      sizeValue = (sizeBytes / (1024 * 1024 * 1024)).toFixed(2);
+      sizeUnit = 'GB';
+    }
+    
+    // Calculate usage percentage (max 40GB)
+    const maxStorageBytes = 40 * 1024 * 1024 * 1024; // 40GB in bytes
+    const usagePercentage = (sizeBytes / maxStorageBytes) * 100;
+    
+    stats.databaseSize = {
+      bytes: sizeBytes,
+      value: parseFloat(sizeValue),
+      unit: sizeUnit,
+      formatted: `${sizeValue} ${sizeUnit}`,
+      usagePercentage: Math.min(usagePercentage, 100), // Cap at 100%
+      maxStorage: '40 GB'
+    };
 
     // Get last modified timestamp
     const lastModifiedResult = await query(`
