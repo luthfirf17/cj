@@ -621,10 +621,17 @@ app.get('/api/user/service-responsible-parties', authenticate, enforceTenancy, a
   try {
     const userId = req.user.id;
     const queryText = `
-      SELECT id, name, phone, address, service_id
-      FROM service_responsible_parties
-      WHERE user_id = $1
-      ORDER BY name
+      SELECT
+        srp.id,
+        rp.name,
+        rp.phone,
+        rp.address,
+        srp.service_id,
+        srp.responsible_party_id
+      FROM service_responsible_parties srp
+      JOIN responsible_parties rp ON srp.responsible_party_id = rp.id
+      WHERE rp.user_id = $1
+      ORDER BY rp.name
     `;
     const result = await query(queryText, [userId]);
     res.json({ success: true, data: result.rows });
@@ -2143,20 +2150,21 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
       expenseParams
     );
     
-    // Get total tax from bookings
+    // Get total tax from bookings - only from fully paid bookings, exclude cancelled
     const taxResult = await query(
       `SELECT 
         COALESCE(
           SUM(
             CASE 
-              WHEN b.status = 'cancelled' AND COALESCE(p.amount_paid, 0) = 0 THEN 0
-              ELSE 
+              WHEN b.status = 'cancelled' THEN 0
+              WHEN COALESCE(p.amount_paid, 0) >= CAST(b.total_price AS DECIMAL) THEN
                 CASE 
                   WHEN b.notes IS NOT NULL AND b.notes != '' THEN
                     CAST(b.total_price AS DECIMAL) * 
                     COALESCE(CAST((b.notes::json->>'tax_percentage') AS DECIMAL), 0) / 100
                   ELSE 0
                 END
+              ELSE 0
             END
           ), 0
         ) as total_tax

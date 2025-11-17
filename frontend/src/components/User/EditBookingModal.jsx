@@ -490,6 +490,13 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     setFormData(prev => ({ ...prev, total_amount: Math.max(0, grandTotal) }));
   }, [subtotalAmount, formData.tax_percentage, formData.additional_fees]);
 
+  // Auto-sync amount_paid with total_amount when payment_status is "Lunas"
+  useEffect(() => {
+    if (formData.payment_status === 'Lunas') {
+      setFormData(prev => ({ ...prev, amount_paid: prev.total_amount }));
+    }
+  }, [formData.total_amount, formData.payment_status]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
@@ -509,26 +516,38 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         // Set amount_paid to 0 if status is "Belum Bayar"
         setFormData(prev => ({ ...prev, amount_paid: 0 }));
       } else if (value === 'Lunas') {
-        // Set amount_paid to total_amount after discount if status is "Lunas"
+        // Set amount_paid to total_amount (grand total) if status is "Lunas"
+        setFormData(prev => ({ ...prev, amount_paid: prev.total_amount }));
+      } else if (value === 'DP') {
+        // For DP, ensure amount_paid doesn't exceed 90% of total_amount
         setFormData(prev => {
-          let discountAmount = 0;
-          if (prev.discount_value > 0) {
-            if (prev.discount_type === 'persen') {
-              discountAmount = (prev.total_amount * prev.discount_value) / 100;
-            } else {
-              discountAmount = prev.discount_value;
-            }
-          }
-          const totalAfterDiscount = prev.total_amount - discountAmount;
-          return { ...prev, amount_paid: totalAfterDiscount };
+          const maxDP = Math.floor(prev.total_amount * 0.9);
+          return {
+            ...prev,
+            amount_paid: Math.min(prev.amount_paid, maxDP)
+          };
         });
       }
-      // For 'DP', let user input the amount manually
+    }
+
+    // Validate amount_paid for DP status
+    if (name === 'amount_paid' && formData.payment_status === 'DP') {
+      const stringValue = String(value || '').replace(/\./g, '');
+      const numValue = parseFloat(stringValue) || 0;
+      const maxDP = Math.floor(formData.total_amount * 0.9);
+      if (numValue > maxDP) {
+        setErrors(prev => ({
+          ...prev,
+          amount_paid: `DP maksimal 90% dari total (Rp ${maxDP.toLocaleString('id-ID')})`
+        }));
+        return;
+      }
     }
 
     // Handle discount inputs
     if (name === 'discount_rupiah') {
-      const numValue = parseFloat(value.replace(/\./g, '')) || 0;
+      const stringValue = String(value || '').replace(/\./g, '');
+      const numValue = parseFloat(stringValue) || 0;
       if (numValue > formData.total_amount) {
         setErrors(prev => ({ ...prev, discount: 'Diskon tidak boleh melebihi total biaya layanan' }));
         return;
@@ -884,7 +903,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       }
       return formData.total_amount - discountAmount;
     })();
-    if (formData.amount_paid > totalAfterDiscount) {
+    if (formData.payment_status !== 'Lunas' && formData.amount_paid > totalAfterDiscount) {
       newErrors.amount_paid = 'Jumlah dibayar tidak boleh melebihi total';
     }
 
@@ -1731,16 +1750,38 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 value={formData.amount_paid === 0 ? '' : formData.amount_paid.toLocaleString('id-ID')}
                 onChange={(e) => {
                   const value = e.target.value.replace(/\./g, '');
-                  handleChange({ target: { name: 'amount_paid', value: parseFloat(value) || 0 } });
+                  const numValue = parseFloat(value) || 0;
+                  
+                  // Validate DP limit
+                  if (formData.payment_status === 'DP') {
+                    const maxDP = Math.floor(formData.total_amount * 0.9);
+                    if (numValue > maxDP) {
+                      setErrors(prev => ({
+                        ...prev,
+                        amount_paid: `DP maksimal 90% dari total (Rp ${maxDP.toLocaleString('id-ID')})`
+                      }));
+                      return;
+                    }
+                  }
+                  
+                  handleChange({ target: { name: 'amount_paid', value: numValue } });
                 }}
                 placeholder="0"
-                disabled={formData.payment_status === 'Belum Bayar'}
+                disabled={formData.payment_status === 'Belum Bayar' || formData.payment_status === 'Lunas'}
                 className={`block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 focus:outline-none ${
-                  formData.payment_status === 'Belum Bayar' ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+                  formData.payment_status === 'Belum Bayar' || formData.payment_status === 'Lunas' ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
                 }`}
               />
               {formData.payment_status === 'Belum Bayar' && (
                 <p className="mt-1 text-xs text-orange-600">Ubah status pembayaran untuk mengisi</p>
+              )}
+              {formData.payment_status === 'DP' && (
+                <p className="mt-1 text-xs text-blue-600">
+                  Maksimal 90% dari total keseluruhan (Rp {Math.floor(formData.total_amount * 0.9).toLocaleString('id-ID')})
+                </p>
+              )}
+              {formData.payment_status === 'Lunas' && (
+                <p className="mt-1 text-xs text-green-600">Otomatis terisi dengan total keseluruhan karena status lunas</p>
               )}
               {errors.amount_paid && (
                 <p className="mt-1 text-xs text-red-600">{errors.amount_paid}</p>
@@ -2017,15 +2058,25 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
               <span className="text-gray-900 font-medium">Rp {formData.amount_paid.toLocaleString('id-ID')}</span>
             </div>
 
-            {/* Remaining Amount */}
-            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-              <span className="text-sm font-medium text-gray-700">Sisa Pembayaran:</span>
-              <span className={`text-base font-bold ${
-                Math.max(0, formData.total_amount - formData.amount_paid) > 0 ? 'text-red-600' : 'text-green-600'
-              }`}>
-                Rp {Math.max(0, formData.total_amount - formData.amount_paid).toLocaleString('id-ID')}
-              </span>
-            </div>
+            {/* Remaining Amount - Only show if not Lunas */}
+            {formData.payment_status !== 'Lunas' && (
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                <span className="text-sm font-medium text-gray-700">Sisa Pembayaran:</span>
+                <span className={`text-base font-bold ${
+                  Math.max(0, formData.total_amount - formData.amount_paid) > 0 ? 'text-red-600' : 'text-green-600'
+                }`}>
+                  Rp {Math.max(0, formData.total_amount - formData.amount_paid).toLocaleString('id-ID')}
+                </span>
+              </div>
+            )}
+
+            {/* Lunas Status */}
+            {formData.payment_status === 'Lunas' && (
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                <span className="text-sm font-medium text-gray-700">Status:</span>
+                <span className="text-base font-bold text-green-600">LUNAS</span>
+              </div>
+            )}
           </div>
         </div>
 
