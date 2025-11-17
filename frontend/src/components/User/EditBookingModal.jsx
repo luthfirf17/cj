@@ -1660,18 +1660,37 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
             )}
           </div>
 
-          <Select
-            label="Status Booking"
-            name="status"
-            value={formData.status}
-            onChange={handleChange}
-            options={[
-              { value: 'Dijadwalkan', label: 'Dijadwalkan' },
-              { value: 'Selesai', label: 'Selesai' },
-              { value: 'Dibatalkan', label: 'Dibatalkan' },
-            ]}
-            required
-          />
+        </div>
+
+        {/* Status Information - Side by Side */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Status</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Status Booking"
+              name="status"
+              value={formData.status}
+              onChange={handleChange}
+              options={[
+                { value: 'Dijadwalkan', label: 'Dijadwalkan' },
+                { value: 'Selesai', label: 'Selesai' },
+                { value: 'Dibatalkan', label: 'Dibatalkan' },
+              ]}
+              required
+            />
+            <Select
+              label="Status Pembayaran"
+              name="payment_status"
+              value={formData.payment_status}
+              onChange={handleChange}
+              options={[
+                { value: 'Belum Bayar', label: 'Belum Bayar' },
+                { value: 'DP', label: 'Down Payment (DP)' },
+                { value: 'Lunas', label: 'Lunas' },
+              ]}
+              required
+            />
+          </div>
         </div>
 
         {/* Payment Information */}
@@ -1841,22 +1860,8 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
             )}
           </div>
 
-          {/* Status Pembayaran */}
-          <div className="mb-4">
-            <Select
-              label="Status Pembayaran"
-              name="payment_status"
-              value={formData.payment_status}
-              onChange={handleChange}
-              options={[
-                { value: 'Belum Bayar', label: 'Belum Bayar' },
-                { value: 'DP', label: 'Down Payment (DP)' },
-                { value: 'Lunas', label: 'Lunas' },
-              ]}
-              required
-            />
-          </div>
-
+          {/* Status Pembayaran - Moved to Status section above */}
+          
           {/* Total Summary */}
           <div className="p-4 bg-white border-2 border-blue-200 rounded-lg">
             <h4 className="font-semibold text-gray-900 mb-3">Rincian Biaya</h4>
