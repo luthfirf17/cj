@@ -1,9 +1,9 @@
-const { generateToken } = require('./src/middlewares/authMiddleware');
+const { generateToken } = require('../backend/src/middlewares/authMiddleware');
 
 const testUser = {
-  id: 7,
-  email: 'admin@cataljasamu.com',
-  role: 'admin'
+  id: 2,
+  email: 'john@example.com',
+  role: 'user'
 };
 
 try {
