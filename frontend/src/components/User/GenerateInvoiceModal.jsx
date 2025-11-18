@@ -1577,7 +1577,7 @@ const GenerateInvoiceModal = ({ isOpen, onClose, booking, onSave }) => {
             disabled={isSaving}
             className="px-1.5 py-1 text-xs sm:text-xs md:text-sm"
           >
-            {isSaving ? 'Menyimpan...' : 'Belum Di Bayar'}
+            {isSaving ? 'Menyimpan...' : 'Tutup'}
           </Button>
           {invoiceType && (
             <Button 

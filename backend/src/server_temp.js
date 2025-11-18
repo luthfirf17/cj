@@ -2882,6 +2882,7 @@ app.get('/api/expense-categories', authenticate, enforceTenancy, async (req, res
 // Export to Excel
 app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, res) => {
   try {
+    console.log('🔄 Starting XLSX export process...');
     const userId = req.user.id;
     const { format } = req.params; // 'xlsx' only
 
@@ -2889,6 +2890,8 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
     if (format !== 'xlsx') {
       return res.status(400).json({ message: 'Invalid format. Only xlsx is supported.' });
     }
+
+    console.log('📊 User ID:', userId, 'Format:', format);
 
     // Import required libraries
     const ExcelJS = require('exceljs');
@@ -2906,17 +2909,33 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
       expenseCategories: req.query.expenseCategories !== 'false'
     };
 
-    // Get selected IDs from query params
-    const selectedIds = {
-      clients: req.query.clientsIds ? JSON.parse(req.query.clientsIds) : null,
-      services: req.query.servicesIds ? JSON.parse(req.query.servicesIds) : null,
-      responsibleParties: req.query.responsiblePartiesIds ? JSON.parse(req.query.responsiblePartiesIds) : null,
-      serviceResponsibleParties: req.query.serviceResponsiblePartiesIds ? JSON.parse(req.query.serviceResponsiblePartiesIds) : null,
-      bookings: req.query.bookingsIds ? JSON.parse(req.query.bookingsIds) : null,
-      payments: req.query.paymentsIds ? JSON.parse(req.query.paymentsIds) : null,
-      expenses: req.query.expensesIds ? JSON.parse(req.query.expensesIds) : null,
-      expenseCategories: req.query.expenseCategoriesIds ? JSON.parse(req.query.expenseCategoriesIds) : null
-    };
+    // Get selected IDs from query params with better error handling
+    const selectedIds = {};
+    const idFields = ['clients', 'services', 'responsibleParties', 'serviceResponsibleParties', 'bookings', 'payments', 'expenses', 'expenseCategories'];
+    
+    idFields.forEach(field => {
+      const paramName = `${field}Ids`;
+      const paramValue = req.query[paramName];
+      
+      if (paramValue && paramValue.trim()) {
+        try {
+          // URL decode first, then parse JSON
+          const decodedValue = decodeURIComponent(paramValue);
+          selectedIds[field] = JSON.parse(decodedValue);
+          
+          // Validate that it's an array
+          if (!Array.isArray(selectedIds[field])) {
+            console.warn(`⚠️ ${paramName} is not an array, converting to array`);
+            selectedIds[field] = [selectedIds[field]];
+          }
+        } catch (error) {
+          console.error(`❌ Error parsing ${paramName}:`, error.message, 'Value:', paramValue);
+          selectedIds[field] = null;
+        }
+      } else {
+        selectedIds[field] = null;
+      }
+    });
 
     console.log('📊 Excel/CSV Export selection:', selection);
     console.log('🔍 Selected IDs:', selectedIds);
@@ -3102,29 +3121,45 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
               // Extract responsible parties
               if (notesObj.responsible_parties && Array.isArray(notesObj.responsible_parties)) {
                 bookingDetails.responsible_parties = notesObj.responsible_parties
-                  .map(rp => rp.name)
+                  .map(rp => rp && rp.name ? rp.name : 'Unknown')
+                  .filter(name => name !== 'Unknown') // Remove unknown entries
                   .join(', ');
               }
 
               // Extract services ordered with prices
               if (notesObj.services && Array.isArray(notesObj.services)) {
-                bookingDetails.service_quantity = notesObj.services.reduce((sum, service) => sum + (parseInt(service.quantity) || 1), 0);
+                bookingDetails.service_quantity = notesObj.services.reduce((sum, service) => {
+                  const quantity = service && service.quantity ? parseInt(service.quantity) || 1 : 1;
+                  return sum + quantity;
+                }, 0);
                 bookingDetails.services_ordered = notesObj.services
-                  .map(service => `${service.service_name || 'Unknown'} (${service.quantity || 1}x) - ${(service.custom_price || 0)}`)
+                  .map(service => {
+                    if (!service) return 'Unknown';
+                    const serviceName = service.service_name || 'Unknown';
+                    const quantity = service.quantity ? parseInt(service.quantity) || 1 : 1;
+                    const customPrice = service.custom_price ? parseFloat(service.custom_price) || 0 : 0;
+                    return `${serviceName} (${quantity}x) - Rp ${customPrice.toLocaleString('id-ID')}`;
+                  })
                   .join('\n');
               }
 
               // Extract additional fees
               if (notesObj.additional_fees && Array.isArray(notesObj.additional_fees)) {
                 bookingDetails.additional_fees = notesObj.additional_fees
-                  .map(fee => `${fee.description}: ${(fee.amount || 0)}`)
+                  .map(fee => {
+                    if (!fee) return '';
+                    const description = fee.description || 'Biaya tambahan';
+                    const amount = fee.amount ? parseFloat(fee.amount) || 0 : 0;
+                    return `${description}: Rp ${amount.toLocaleString('id-ID')}`;
+                  })
+                  .filter(fee => fee) // Remove empty entries
                   .join('\n');
               }
 
               // Extract discount and tax
-              bookingDetails.discount = notesObj.discount || 0;
+              bookingDetails.discount = notesObj.discount ? parseFloat(notesObj.discount) || 0 : 0;
               bookingDetails.discount_type = notesObj.discount_type || 'rupiah';
-              bookingDetails.tax_percentage = notesObj.tax_percentage || 0;
+              bookingDetails.tax_percentage = notesObj.tax_percentage ? parseFloat(notesObj.tax_percentage) || 0 : 0;
 
               // Extract user notes
               bookingDetails.user_notes = notesObj.user_notes || '';
@@ -3383,11 +3418,10 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
     // Fetch and add Service Responsible Parties sheet if selected
     if (selection.serviceResponsibleParties) {
       let serviceResponsiblePartiesQuery = `SELECT
-        srp.id, rp.name, rp.phone, rp.address, srp.service_id,
-        srp.created_at, srp.updated_at
-       FROM service_responsible_parties srp
-       JOIN responsible_parties rp ON srp.responsible_party_id = rp.id
-       WHERE rp.user_id = $1`;
+        id, name, phone, address, service_id,
+        created_at, updated_at
+       FROM service_responsible_parties
+       WHERE user_id = $1`;
       const params = [userId];
 
       if (selectedIds.serviceResponsibleParties && selectedIds.serviceResponsibleParties.length > 0) {
@@ -3503,30 +3537,8 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
   }
 });
 
-// Test endpoint without auth
-app.get('/api/test/backup/export/:format', async (req, res) => {
-  try {
-    console.log('🔄 Starting XLSX export process (TEST)...');
-    const userId = 1; // Test user ID
-    const { format } = req.params; // 'xlsx' only
-
-    // Validate format
-    if (format !== 'xlsx') {
-      return res.status(400).json({ message: 'Invalid format. Only xlsx is supported.' });
-    }
-
-    console.log('📊 User ID:', userId, 'Format:', format);
-    res.json({ message: 'Test endpoint working' });
-  } catch (error) {
-    console.error('Error in test endpoint:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Export full backup (JSON) - NEW ENDPOINT to avoid browser cache
 app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, res) => {
-  try {
-    const userId = req.user.id;
 
     // Get selection from query params (default all true)
     const selection = {
@@ -3541,17 +3553,33 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
       expenseCategories: req.query.expenseCategories !== 'false'
     };
 
-    // Get selected IDs from query params
-    const selectedIds = {
-      clients: req.query.clientsIds ? JSON.parse(req.query.clientsIds) : null,
-      services: req.query.servicesIds ? JSON.parse(req.query.servicesIds) : null,
-      responsibleParties: req.query.responsiblePartiesIds ? JSON.parse(req.query.responsiblePartiesIds) : null,
-      serviceResponsibleParties: req.query.serviceResponsiblePartiesIds ? JSON.parse(req.query.serviceResponsiblePartiesIds) : null,
-      bookings: req.query.bookingsIds ? JSON.parse(req.query.bookingsIds) : null,
-      payments: req.query.paymentsIds ? JSON.parse(req.query.paymentsIds) : null,
-      expenses: req.query.expensesIds ? JSON.parse(req.query.expensesIds) : null,
-      expenseCategories: req.query.expenseCategoriesIds ? JSON.parse(req.query.expenseCategoriesIds) : null
-    };
+    // Get selected IDs from query params with better error handling
+    const selectedIds = {};
+    const idFields = ['clients', 'services', 'responsibleParties', 'serviceResponsibleParties', 'bookings', 'payments', 'expenses', 'expenseCategories'];
+    
+    idFields.forEach(field => {
+      const paramName = `${field}Ids`;
+      const paramValue = req.query[paramName];
+      
+      if (paramValue && paramValue.trim()) {
+        try {
+          // URL decode first, then parse JSON
+          const decodedValue = decodeURIComponent(paramValue);
+          selectedIds[field] = JSON.parse(decodedValue);
+          
+          // Validate that it's an array
+          if (!Array.isArray(selectedIds[field])) {
+            console.warn(`⚠️ ${paramName} is not an array, converting to array`);
+            selectedIds[field] = [selectedIds[field]];
+          }
+        } catch (error) {
+          console.error(`❌ Error parsing ${paramName}:`, error.message, 'Value:', paramValue);
+          selectedIds[field] = null;
+        }
+      } else {
+        selectedIds[field] = null;
+      }
+    });
 
     console.log('📦 Export selection:', selection);
     console.log('🔍 Selected IDs:', selectedIds);
@@ -3623,10 +3651,7 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
 
     // Fetch service responsible parties if selected
     if (selection.serviceResponsibleParties) {
-      let serviceResponsiblePartiesQuery = `SELECT srp.*, rp.name, rp.phone, rp.address
-        FROM service_responsible_parties srp
-        JOIN responsible_parties rp ON srp.responsible_party_id = rp.id
-        WHERE rp.user_id = $1`;
+      let serviceResponsiblePartiesQuery = 'SELECT * FROM service_responsible_parties WHERE user_id = $1';
       const params = [userId];
       
       if (selectedIds.serviceResponsibleParties && selectedIds.serviceResponsibleParties.length > 0) {
@@ -3763,561 +3788,3 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
 
-    // Send as string to avoid double JSON encoding
-    res.send(JSON.stringify(backup, null, 2));
-  } catch (error) {
-    console.error('Error exporting full backup:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to export full backup'
-    });
-  }
-});
-
-// Import backup data
-// Configure multer for file upload
-const upload = multer({ storage: multer.memoryStorage() });
-
-app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('backupFile'), async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { importType } = req.body; // 'replace' or 'add'
-    
-    // Check if file exists
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No file uploaded'
-      });
-    }
-
-        // Validate file is JSON
-        if (req.file.mimetype !== 'application/json' && !req.file.originalname.endsWith('.json')) {
-          return res.status(400).json({
-            success: false,
-            message: 'File harus berformat JSON. Silakan export menggunakan "Export Backup JSON" terlebih dahulu.'
-          });
-        }
-
-        // Parse JSON with error handling
-        let backupData;
-        try {
-          const fileContent = req.file.buffer.toString();
-          console.log('📄 File info:', {
-            filename: req.file.originalname,
-            mimetype: req.file.mimetype,
-            size: req.file.size,
-            contentPreview: fileContent.substring(0, 200)
-          });
-          backupData = JSON.parse(fileContent);
-        } catch (parseError) {
-          console.error('❌ JSON Parse Error:', parseError.message);
-          return res.status(400).json({
-            success: false,
-            message: 'File bukan format JSON yang valid. Pastikan Anda menggunakan file dari "Export Backup JSON".'
-          });
-        }
-
-        // Validate backup format
-        if (!backupData.version || !backupData.data) {
-          return res.status(400).json({
-            success: false,
-            message: 'Format backup tidak valid. File harus dari "Export Backup JSON".'
-          });
-        }
-
-        // Start transaction
-        await query('BEGIN');
-
-        if (importType === 'replace') {
-          console.log('🔄 Replace mode: Deleting existing data...');
-          
-          // Delete all existing data (in correct order due to foreign keys)
-          // Must delete child tables first before parent tables
-          
-          // 1. Delete payments (references bookings)
-          const paymentsDeleted = await query(
-            `DELETE FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = $1)`,
-            [userId]
-          );
-          console.log(`  ✅ Deleted ${paymentsDeleted.rowCount} payments`);
-          
-          // 2. Delete expenses (references user)
-          const expensesDeleted = await query('DELETE FROM expenses WHERE user_id = $1', [userId]);
-          console.log(`  ✅ Deleted ${expensesDeleted.rowCount} expenses`);
-          
-          // 3. Delete expense_categories (references user)
-          const expenseCategoriesDeleted = await query('DELETE FROM expense_categories WHERE user_id = $1', [userId]);
-          console.log(`  ✅ Deleted ${expenseCategoriesDeleted.rowCount} expense categories`);
-          
-          // 4. Delete bookings (references clients and services)
-          const bookingsDeleted = await query('DELETE FROM bookings WHERE user_id = $1', [userId]);
-          console.log(`  ✅ Deleted ${bookingsDeleted.rowCount} bookings`);
-          
-          // 5. Delete clients (can be referenced by bookings)
-          const clientsDeleted = await query('DELETE FROM clients WHERE user_id = $1', [userId]);
-          console.log(`  ✅ Deleted ${clientsDeleted.rowCount} clients`);
-          
-          // 6. Delete services (can be referenced by bookings)
-          const servicesDeleted = await query('DELETE FROM services WHERE user_id = $1', [userId]);
-          console.log(`  ✅ Deleted ${servicesDeleted.rowCount} services`);
-          
-          // 7. Delete service_responsible_parties (references services and responsible_parties)
-          const serviceResponsiblePartiesDeleted = await query(`
-            DELETE FROM service_responsible_parties 
-            WHERE responsible_party_id IN (
-              SELECT id FROM responsible_parties WHERE user_id = $1
-            )
-          `, [userId]);
-          console.log(`  ✅ Deleted ${serviceResponsiblePartiesDeleted.rowCount} service responsible parties`);
-          
-          // 8. Delete responsible_parties (can be referenced by service_responsible_parties)
-          const responsiblePartiesDeleted = await query('DELETE FROM responsible_parties WHERE user_id = $1', [userId]);
-          console.log(`  ✅ Deleted ${responsiblePartiesDeleted.rowCount} responsible parties`);
-          
-          // 9. Delete company_settings (references user)
-          const settingsDeleted = await query('DELETE FROM company_settings WHERE user_id = $1', [userId]);
-          console.log(`  ✅ Deleted ${settingsDeleted.rowCount} company settings`);
-          
-          console.log('✅ All existing data deleted successfully');
-        }
-
-        // Import clients
-        // For 'replace' mode: import ALL clients
-        // For 'add' mode: import only those flagged for import (not duplicates)
-        const importFlags = backupData.importFlags || {};
-        const clientImportIndices = new Set(importFlags.clients || []);
-        
-        if (backupData.data.clients && backupData.data.clients.length > 0) {
-          for (let i = 0; i < backupData.data.clients.length; i++) {
-            const client = backupData.data.clients[i];
-            // Import if: replace mode (import all) OR add mode with flag
-            const shouldImport = importType === 'replace' || clientImportIndices.has(i);
-            
-            if (shouldImport) {
-              await query(
-                `INSERT INTO clients (user_id, name, phone, email, address, notes, created_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [userId, client.name, client.phone, client.email, client.address, client.notes, client.created_at, client.updated_at]
-              );
-              console.log(`  ✅ Imported client: ${client.name}`);
-            }
-          }
-        }
-
-        // Import services
-        // For 'replace' mode: import ALL services
-        // For 'add' mode: import only those flagged for import (not duplicates)
-        const serviceImportIndices = new Set(importFlags.services || []);
-        
-        if (backupData.data.services && backupData.data.services.length > 0) {
-          for (let i = 0; i < backupData.data.services.length; i++) {
-            const service = backupData.data.services[i];
-            // Import if: replace mode (import all) OR add mode with flag
-            const shouldImport = importType === 'replace' || serviceImportIndices.has(i);
-            
-            if (shouldImport) {
-              await query(
-                `INSERT INTO services (user_id, name, description, price, duration, created_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [userId, service.name, service.description, service.price, service.duration, service.created_at, service.updated_at]
-              );
-              console.log(`  ✅ Imported service: ${service.name}`);
-            }
-          }
-        }
-
-        // Import responsible parties
-        // For 'replace' mode: import ALL responsible parties
-        // For 'add' mode: import only those flagged for import (not duplicates)
-        const responsiblePartyImportIndices = new Set(importFlags.responsibleParties || []);
-        
-        if (backupData.data.responsibleParties && backupData.data.responsibleParties.length > 0) {
-          for (let i = 0; i < backupData.data.responsibleParties.length; i++) {
-            const responsibleParty = backupData.data.responsibleParties[i];
-            // Import if: replace mode (import all) OR add mode with flag
-            const shouldImport = importType === 'replace' || responsiblePartyImportIndices.has(i);
-            
-            if (shouldImport) {
-              await query(
-                `INSERT INTO responsible_parties (user_id, name, phone, address, created_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [userId, responsibleParty.name, responsibleParty.phone, responsibleParty.address || null, responsibleParty.created_at, responsibleParty.updated_at]
-              );
-              console.log(`  ✅ Imported responsible party: ${responsibleParty.name}`);
-            }
-          }
-        }
-
-        // Create ID mappings for services and responsible parties (needed for service_responsible_parties)
-        const serviceIdMap = {};
-        const responsiblePartyIdMap = {};
-
-        // Get all services and responsible parties for mapping
-        const newServices = await query('SELECT id, name FROM services WHERE user_id = $1', [userId]);
-        const newResponsibleParties = await query('SELECT id, name, phone FROM responsible_parties WHERE user_id = $1', [userId]);
-
-        // Create mapping from old backup data to new database IDs
-        if (backupData.data.services && backupData.data.services.length > 0) {
-          for (const oldService of backupData.data.services) {
-            const matchingService = newServices.rows.find(s => 
-              s.name && oldService.name && s.name.trim().toLowerCase() === oldService.name.trim().toLowerCase()
-            );
-            if (matchingService) {
-              serviceIdMap[oldService.id] = matchingService.id;
-            }
-          }
-        }
-
-        if (backupData.data.responsibleParties && backupData.data.responsibleParties.length > 0) {
-          for (const oldResponsibleParty of backupData.data.responsibleParties) {
-            const matchingResponsibleParty = newResponsibleParties.rows.find(rp => 
-              (rp.name && oldResponsibleParty.name && rp.name.trim().toLowerCase() === oldResponsibleParty.name.trim().toLowerCase()) ||
-              (rp.phone && oldResponsibleParty.phone && rp.phone.replace(/\D/g, '') === oldResponsibleParty.phone.replace(/\D/g, ''))
-            );
-            if (matchingResponsibleParty) {
-              responsiblePartyIdMap[oldResponsibleParty.id] = matchingResponsibleParty.id;
-            }
-          }
-        }
-
-        console.log('📊 Service & Responsible Party ID Mapping Summary:');
-        console.log(`  Services mapped: ${Object.keys(serviceIdMap).length}/${backupData.data.services?.length || 0}`);
-        console.log(`  Responsible Parties mapped: ${Object.keys(responsiblePartyIdMap).length}/${backupData.data.responsibleParties?.length || 0}`);
-
-        // Import service responsible parties
-        // For 'replace' mode: import ALL service responsible parties
-        // For 'add' mode: import only those flagged for import (not duplicates)
-        const serviceResponsiblePartyImportIndices = new Set(importFlags.serviceResponsibleParties || []);
-        
-        if (backupData.data.serviceResponsibleParties && backupData.data.serviceResponsibleParties.length > 0) {
-          for (let i = 0; i < backupData.data.serviceResponsibleParties.length; i++) {
-            const serviceResponsibleParty = backupData.data.serviceResponsibleParties[i];
-            // Import if: replace mode (import all) OR add mode with flag
-            const shouldImport = importType === 'replace' || serviceResponsiblePartyImportIndices.has(i);
-            
-            if (shouldImport) {
-              const newServiceId = serviceIdMap[serviceResponsibleParty.service_id];
-              const newResponsiblePartyId = responsiblePartyIdMap[serviceResponsibleParty.responsible_party_id];
-              
-              if (newServiceId && newResponsiblePartyId) {
-                // Check if this association already exists
-                const existing = await query(
-                  'SELECT id FROM service_responsible_parties WHERE service_id = $1 AND responsible_party_id = $2',
-                  [newServiceId, newResponsiblePartyId]
-                );
-                
-                if (existing.rows.length === 0) {
-                  await query(
-                    `INSERT INTO service_responsible_parties (service_id, responsible_party_id, created_at, updated_at) 
-                     VALUES ($1, $2, $3, $4)`,
-                    [newServiceId, newResponsiblePartyId, serviceResponsibleParty.created_at, serviceResponsibleParty.updated_at]
-                  );
-                  console.log(`  ✅ Imported service-responsible party association: Service ${newServiceId} ↔ Responsible Party ${newResponsiblePartyId}`);
-                } else {
-                  console.log(`  ⏭️  Skipped existing association: Service ${newServiceId} ↔ Responsible Party ${newResponsiblePartyId}`);
-                }
-              } else {
-                console.log(`  ⚠️  Skipped service responsible party (service or responsible party not found): Service ID ${serviceResponsibleParty.service_id} → ${newServiceId}, Responsible Party ID ${serviceResponsibleParty.responsible_party_id} → ${newResponsiblePartyId}`);
-              }
-            }
-          }
-        }
-
-        // Import expense categories (preserve default/system categories)
-        // For 'replace' mode: import ALL categories
-        // For 'add' mode: import only those flagged for import (not duplicates)
-        const expenseCategoryImportIndices = new Set(importFlags.expenseCategories || []);
-        
-        if (backupData.data.expenseCategories && backupData.data.expenseCategories.length > 0) {
-          for (let i = 0; i < backupData.data.expenseCategories.length; i++) {
-            const category = backupData.data.expenseCategories[i];
-            
-            // Import if: replace mode (import all) OR add mode with flag
-            const shouldImport = importType === 'replace' || expenseCategoryImportIndices.has(i);
-            
-            if (!shouldImport) {
-              console.log(`  ⏭️  Skipped category (not selected): ${category.name}`);
-              continue;
-            }
-            
-            // Skip if it's a default category that already exists
-            if (category.is_default || category.user_id === null) {
-              const existing = await query(
-                'SELECT id FROM expense_categories WHERE name = $1 AND user_id IS NULL',
-                [category.name]
-              );
-              if (existing.rows.length > 0) {
-                console.log(`  ⏭️  Skipped default category: ${category.name} (already exists)`);
-                continue;
-              }
-            }
-            
-            // Import category (preserve user_id: null for defaults, userId for custom)
-            const categoryUserId = (category.is_default || category.user_id === null) ? null : userId;
-            await query(
-              `INSERT INTO expense_categories (user_id, name, is_default, created_at) 
-               VALUES ($1, $2, $3, $4)`,
-              [categoryUserId, category.name, category.is_default || false, category.created_at]
-            );
-            console.log(`  ✅ Imported category: ${category.name} ${categoryUserId ? '(custom)' : '(default)'}`);
-          }
-        }
-
-        // Import bookings (need to map old IDs to new IDs)
-        const clientIdMap = {};
-        const bookingIdMap = {};
-
-        if (backupData.data.bookings && backupData.data.bookings.length > 0) {
-          // Get ID mappings for clients
-          // For 'add' mode: map ALL clients (both newly imported and existing)
-          // For 'replace' mode: map only newly imported ones
-          const newClients = await query('SELECT id, name, phone, email FROM clients WHERE user_id = $1', [userId]);
-
-          // Create mapping from old booking data to new database IDs
-          if (backupData.data.clients && backupData.data.clients.length > 0) {
-            for (const oldClient of backupData.data.clients) {
-              // Find matching client by name, phone, or email
-              const matchingClient = newClients.rows.find(c => 
-                (c.name && oldClient.name && c.name.trim().toLowerCase() === oldClient.name.trim().toLowerCase()) ||
-                (c.phone && oldClient.phone && c.phone.replace(/\D/g, '') === oldClient.phone.replace(/\D/g, '')) ||
-                (c.email && oldClient.email && c.email.trim().toLowerCase() === oldClient.email.trim().toLowerCase())
-              );
-              if (matchingClient) {
-                clientIdMap[oldClient.id] = matchingClient.id;
-              }
-            }
-          }
-
-          console.log('📊 ID Mapping Summary:');
-          console.log(`  Clients mapped: ${Object.keys(clientIdMap).length}/${backupData.data.clients?.length || 0}`);
-          console.log(`  Services mapped: ${Object.keys(serviceIdMap).length}/${backupData.data.services?.length || 0}`);
-          console.log(`  Responsible Parties mapped: ${Object.keys(responsiblePartyIdMap).length}/${backupData.data.responsibleParties?.length || 0}`);
-          console.log(`  Bookings to import: ${backupData.data.bookings.length}`);
-          console.log('  Client ID Map:', clientIdMap);
-          console.log('  Service ID Map:', serviceIdMap);
-
-          for (const booking of backupData.data.bookings) {
-            const newClientId = clientIdMap[booking.client_id];
-            const newServiceId = serviceIdMap[booking.service_id];
-
-            if (newClientId && newServiceId) {
-              // Update service IDs in notes JSON if it contains services array
-              let updatedNotes = booking.notes;
-              if (booking.notes) {
-                try {
-                  const notesObj = JSON.parse(booking.notes);
-                  if (notesObj.services && Array.isArray(notesObj.services)) {
-                    // Map old service IDs to new IDs in the services array
-                    notesObj.services = notesObj.services.map(service => {
-                      const oldServiceId = parseInt(service.service_id);
-                      const mappedServiceId = serviceIdMap[oldServiceId];
-                      const oldResponsiblePartyId = parseInt(service.responsible_party_id);
-                      const mappedResponsiblePartyId = responsiblePartyIdMap[oldResponsiblePartyId];
-                      
-                      const updatedService = { ...service };
-                      if (mappedServiceId) {
-                        updatedService.service_id = mappedServiceId.toString();
-                      }
-                      if (mappedResponsiblePartyId) {
-                        updatedService.responsible_party_id = mappedResponsiblePartyId.toString();
-                      }
-                      
-                      return updatedService;
-                    });
-                    updatedNotes = JSON.stringify(notesObj);
-                    console.log(`  🔄 Mapped ${notesObj.services.length} service IDs and responsible party IDs in booking notes`);
-                  }
-                } catch (e) {
-                  // If notes is not JSON, keep original
-                  console.log(`  ℹ️  Notes is not JSON format, keeping as is`);
-                }
-              }
-
-              const result = await query(
-                `INSERT INTO bookings (user_id, client_id, service_id, booking_date, booking_time, location_name, location_map_url, total_price, status, notes, created_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-                [userId, newClientId, newServiceId, booking.booking_date, booking.booking_time || '00:00:00', booking.location_name || null, booking.location_map_url || null, booking.total_price, booking.status, updatedNotes, booking.created_at, booking.updated_at]
-              );
-              bookingIdMap[booking.id] = result.rows[0].id;
-              console.log(`  ✅ Imported booking: ${booking.booking_date} - Client: ${newClientId}, Service: ${newServiceId}${booking.location_name ? ` at ${booking.location_name}` : ''}`);
-            } else {
-              console.log(`  ⚠️  Skipped booking (client or service not found): Client ID ${booking.client_id} → ${newClientId}, Service ID ${booking.service_id} → ${newServiceId}`);
-            }
-          }
-          console.log(`  ✅ Successfully imported ${Object.keys(bookingIdMap).length} bookings`);
-        }
-
-        // Import payments
-        if (backupData.data.payments && backupData.data.payments.length > 0) {
-          for (const payment of backupData.data.payments) {
-            const newBookingId = bookingIdMap[payment.booking_id];
-            if (newBookingId) {
-              await query(
-                `INSERT INTO payments (booking_id, amount, payment_date, payment_method, payment_status, notes, created_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [newBookingId, payment.amount, payment.payment_date, payment.payment_method, payment.payment_status || 'paid', payment.notes, payment.created_at, payment.updated_at]
-              );
-            }
-          }
-        }
-
-        // Import expenses (need to map category IDs, including defaults)
-        // For 'replace' mode: import ALL expenses
-        // For 'add' mode: import only those flagged for import (not duplicates)
-        const expenseImportIndices = new Set(importFlags.expenses || []);
-        
-        if (backupData.data.expenses && backupData.data.expenses.length > 0) {
-          // Build categoryIdMap by name, so even if category is duplicate and not imported, we can map to existing category
-          const categoryIdMap = {};
-          // Get all categories for this user (including default)
-          const newCategories = await query(
-            'SELECT id, name FROM expense_categories WHERE user_id = $1 OR user_id IS NULL', 
-            [userId]
-          );
-          // Map by name (case-insensitive)
-          newCategories.rows.forEach(category => {
-            categoryIdMap[category.name.trim().toLowerCase()] = category.id;
-          });
-
-          let importedCount = 0;
-          for (let i = 0; i < backupData.data.expenses.length; i++) {
-            const expense = backupData.data.expenses[i];
-            // Import if: replace mode (import all) OR add mode with flag
-            const shouldImport = importType === 'replace' || expenseImportIndices.has(i);
-            if (!shouldImport) {
-              console.log(`  ⏭️  Skipped expense (not selected): ${expense.description}`);
-              continue;
-            }
-            // Find category name from backupData expenseCategories (if available), else from expense itself
-            let categoryName = null;
-            if (expense.category_id && backupData.data.expenseCategories) {
-              const catObj = backupData.data.expenseCategories.find(c => c.id === expense.category_id);
-              if (catObj) categoryName = catObj.name;
-            }
-            // Fallback: if expense has categoryName property
-            if (!categoryName && expense.categoryName) categoryName = expense.categoryName;
-            // Fallback: if expense has category_name property
-            if (!categoryName && expense.category_name) categoryName = expense.category_name;
-            // Fallback: if expense has category (rare)
-            if (!categoryName && expense.category) categoryName = expense.category;
-            // Fallback: if expense has categoryName in notes
-            if (!categoryName && expense.notes && typeof expense.notes === 'string' && expense.notes.includes('categoryName')) {
-              try {
-                const notesObj = JSON.parse(expense.notes);
-                if (notesObj.categoryName) categoryName = notesObj.categoryName;
-              } catch {}
-            }
-            // Final fallback: if expense has category_id as string (rare)
-            if (!categoryName && typeof expense.category_id === 'string') categoryName = expense.category_id;
-            // Normalize name
-            if (categoryName) categoryName = categoryName.trim().toLowerCase();
-            const newCategoryId = categoryName ? categoryIdMap[categoryName] : null;
-            if (newCategoryId) {
-              await query(
-                `INSERT INTO expenses (user_id, category_id, amount, expense_date, description, created_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [userId, newCategoryId, expense.amount, expense.expense_date, expense.description, expense.created_at, expense.updated_at]
-              );
-              importedCount++;
-              console.log(`  ✅ Imported expense: ${expense.description} - Rp ${expense.amount}`);
-            } else {
-              console.log(`  ⚠️  Skipped expense (category not found): ${expense.description} (categoryName: ${categoryName})`);
-            }
-          }
-          console.log(`  ✅ Total imported ${importedCount} expenses (out of ${backupData.data.expenses.length})`);
-        }
-
-        // Import company settings (including bank information)
-        if (backupData.data.companySettings) {
-          const settings = backupData.data.companySettings;
-          await query(
-            `INSERT INTO company_settings (
-              user_id, company_name, company_address, company_phone, company_email, company_logo_url,
-              bank_name, account_number, account_holder_name, payment_instructions,
-              bank_name_alt, account_number_alt, account_holder_name_alt,
-              created_at, updated_at
-            ) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
-             ON CONFLICT (user_id) DO UPDATE SET 
-             company_name = EXCLUDED.company_name,
-             company_address = EXCLUDED.company_address,
-             company_phone = EXCLUDED.company_phone,
-             company_email = EXCLUDED.company_email,
-             company_logo_url = EXCLUDED.company_logo_url,
-             bank_name = EXCLUDED.bank_name,
-             account_number = EXCLUDED.account_number,
-             account_holder_name = EXCLUDED.account_holder_name,
-             payment_instructions = EXCLUDED.payment_instructions,
-             bank_name_alt = EXCLUDED.bank_name_alt,
-             account_number_alt = EXCLUDED.account_number_alt,
-             account_holder_name_alt = EXCLUDED.account_holder_name_alt,
-             updated_at = EXCLUDED.updated_at`,
-            [
-              userId, 
-              settings.company_name, 
-              settings.company_address, 
-              settings.company_phone, 
-              settings.company_email, 
-              settings.company_logo_url,
-              settings.bank_name || null,
-              settings.account_number || null,
-              settings.account_holder_name || null,
-              settings.payment_instructions || null,
-              settings.bank_name_alt || null,
-              settings.account_number_alt || null,
-              settings.account_holder_name_alt || null,
-              settings.created_at, 
-              settings.updated_at
-            ]
-          );
-          console.log(`  ✅ Imported company settings (with bank info)`);
-        }
-
-        // Commit transaction
-        await query('COMMIT');
-
-    res.json({
-      success: true,
-      message: importType === 'replace' 
-        ? 'Data berhasil diganti dengan data dari backup!' 
-        : 'Data dari backup berhasil ditambahkan!'
-    });
-  } catch (error) {
-    await query('ROLLBACK');
-    console.error('Error importing backup:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to import backup data'
-    });
-  }
-});
-
-// 404 handler - must be after all routes
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Endpoint not found'
-  });
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
-
-// Start server
-const PORT = process.env.PORT || 5001;
- app.listen(PORT, '0.0.0.0', () => {
-   console.log(`\n🚀 Server is running on http://0.0.0.0:${PORT}`);
-   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-   console.log(`🌐 API available at http://YOUR_SERVER_IP:${PORT}/api`);
-   console.log(`⏰ Started at: ${new Date().toLocaleString('id-ID')}\n`);
- });
-
-module.exports = app;

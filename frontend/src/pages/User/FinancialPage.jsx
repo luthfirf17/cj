@@ -16,7 +16,8 @@ import {
   FiPieChart,
   FiBarChart2,
   FiX,
-  FiSearch
+  FiSearch,
+  FiInfo
 } from 'react-icons/fi';
 import {
   LineChart,
@@ -66,6 +67,20 @@ const FinancialPage = () => {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
+  
+  // Detail modal states
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailModalData, setDetailModalData] = useState({
+    title: '',
+    type: '',
+    data: [],
+    total: 0
+  });
+  const [detailLoading, setDetailLoading] = useState(false);
+  
+  // Detail modal search and filter states
+  const [detailSearch, setDetailSearch] = useState('');
+  const [detailSortBy, setDetailSortBy] = useState('date-desc'); // date-desc, date-asc, amount-desc, amount-asc, name-asc, name-desc
   
   // Filter states
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
@@ -416,6 +431,105 @@ const FinancialPage = () => {
 
   const iconOptions = ['💰', '👥', '🛒', '⚙️', '📢', '🚗', '💡', '📝', '🏠', '🍔', '✈️', '🎓', '💊', '📱'];
 
+  // Fetch detail data for card breakdown
+  const fetchDetailData = async (type) => {
+    setDetailLoading(true);
+    try {
+      let endpoint = '';
+      let title = '';
+      
+      switch (type) {
+        case 'revenue':
+          endpoint = `/user/financial-details/revenue?month=${filterMonth}&year=${filterYear}`;
+          title = 'Detail Total Pendapatan';
+          break;
+        case 'paid':
+          endpoint = `/user/financial-details/paid?month=${filterMonth}&year=${filterYear}`;
+          title = 'Detail Sudah Diterima';
+          break;
+        case 'unpaid':
+          endpoint = `/user/financial-details/unpaid?month=${filterMonth}&year=${filterYear}`;
+          title = 'Detail Belum Dibayar';
+          break;
+        case 'expenses':
+          endpoint = `/user/financial-details/expenses?month=${filterMonth}&year=${filterYear}`;
+          title = 'Detail Total Pengeluaran';
+          break;
+        case 'tax':
+          endpoint = `/user/financial-details/tax?month=${filterMonth}&year=${filterYear}`;
+          title = 'Detail Total Pajak';
+          break;
+        case 'net-income':
+          endpoint = `/user/financial-details/net-income?month=${filterMonth}&year=${filterYear}`;
+          title = 'Detail Pendapatan Bersih';
+          break;
+        default:
+          return;
+      }
+      
+      const response = await api.get(endpoint);
+      
+      if (response.data.success) {
+        setDetailModalData({
+          title,
+          type,
+          data: response.data.data,
+          total: response.data.total
+        });
+        // Reset search and sort when opening modal
+        setDetailSearch('');
+        setDetailSortBy('date-desc');
+        setShowDetailModal(true);
+      }
+    } catch (error) {
+      console.error('Error fetching detail data:', error);
+      alert('Gagal mengambil data detail');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  // Filter and sort detail data
+  const getFilteredAndSortedDetailData = () => {
+    if (!detailModalData.data) return [];
+    
+    let filtered = detailModalData.data.filter(item => {
+      if (!detailSearch) return true;
+      
+      const searchLower = detailSearch.toLowerCase();
+      const clientName = (item.client_name || '').toLowerCase();
+      const serviceNames = (item.service_names || '').toLowerCase();
+      
+      return clientName.includes(searchLower) || serviceNames.includes(searchLower);
+    });
+    
+    // Sort data
+    filtered.sort((a, b) => {
+      switch (detailSortBy) {
+        case 'date-desc':
+          const dateA = detailModalData.type === 'paid' ? new Date(a.payment_date) : new Date(a.booking_date);
+          const dateB = detailModalData.type === 'paid' ? new Date(b.payment_date) : new Date(b.booking_date);
+          return dateB - dateA;
+        case 'date-asc':
+          const dateAscA = detailModalData.type === 'paid' ? new Date(a.payment_date) : new Date(a.booking_date);
+          const dateAscB = detailModalData.type === 'paid' ? new Date(b.payment_date) : new Date(b.booking_date);
+          return dateAscA - dateAscB;
+        case 'amount-desc':
+          return parseFloat(b.amount) - parseFloat(a.amount);
+        case 'amount-asc':
+          return parseFloat(a.amount) - parseFloat(b.amount);
+        case 'name-asc':
+          return (a.client_name || '').localeCompare(b.client_name || '');
+        case 'name-desc':
+          return (b.client_name || '').localeCompare(a.client_name || '');
+        default:
+          return 0;
+      }
+    });
+    
+    return filtered;
+  };
+
   if (!isPinVerified) {
     return (
       <>
@@ -495,7 +609,10 @@ const FinancialPage = () => {
         {/* Financial Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-1 sm:gap-4 lg:gap-6 mb-2 sm:mb-6 lg:mb-8">
           {/* Total Revenue */}
-          <div className="bg-gradient-to-br from-indigo-400/90 to-indigo-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-indigo-300/20">
+          <div 
+            className="bg-gradient-to-br from-indigo-400/90 to-indigo-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-indigo-300/20 cursor-pointer"
+            onClick={() => fetchDetailData('revenue')}
+          >
             <div className="flex items-center justify-between mb-0.5 sm:mb-2 lg:mb-4">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-0.5 sm:p-1.5 lg:p-3">
                 <FiDollarSign className="w-2 h-2 sm:w-4 sm:h-4 lg:w-6 lg:h-6" />
@@ -508,7 +625,10 @@ const FinancialPage = () => {
           </div>
 
           {/* Total Received */}
-          <div className="bg-gradient-to-br from-emerald-400/90 to-teal-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-emerald-300/20">
+          <div 
+            className="bg-gradient-to-br from-emerald-400/90 to-teal-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-emerald-300/20 cursor-pointer"
+            onClick={() => fetchDetailData('paid')}
+          >
             <div className="flex items-center justify-between mb-0.5 sm:mb-2 lg:mb-4">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-0.5 sm:p-1.5 lg:p-3">
                 <FiCheckCircle className="w-2 h-2 sm:w-4 sm:h-4 lg:w-6 lg:h-6" />
@@ -521,7 +641,10 @@ const FinancialPage = () => {
           </div>
 
           {/* Total Unpaid */}
-          <div className="bg-gradient-to-br from-amber-400/90 to-orange-400/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-amber-300/20">
+          <div 
+            className="bg-gradient-to-br from-amber-400/90 to-orange-400/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-amber-300/20 cursor-pointer"
+            onClick={() => fetchDetailData('unpaid')}
+          >
             <div className="flex items-center justify-between mb-0.5 sm:mb-2 lg:mb-4">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-0.5 sm:p-1.5 lg:p-3">
                 <FiClock className="w-2 h-2 sm:w-4 sm:h-4 lg:w-6 lg:h-6" />
@@ -534,7 +657,10 @@ const FinancialPage = () => {
           </div>
 
           {/* Total Expenses */}
-          <div className="bg-gradient-to-br from-rose-400/90 to-pink-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-rose-300/20">
+          <div 
+            className="bg-gradient-to-br from-rose-400/90 to-pink-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-rose-300/20 cursor-pointer"
+            onClick={() => fetchDetailData('expenses')}
+          >
             <div className="flex items-center justify-between mb-0.5 sm:mb-2 lg:mb-4">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-0.5 sm:p-1.5 lg:p-3">
                 <FiTrendingDown className="w-2 h-2 sm:w-4 sm:h-4 lg:w-6 lg:h-6" />
@@ -547,7 +673,10 @@ const FinancialPage = () => {
           </div>
 
           {/* Total Tax */}
-          <div className="bg-gradient-to-br from-cyan-400/90 to-blue-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-cyan-300/20">
+          <div 
+            className="bg-gradient-to-br from-cyan-400/90 to-blue-500/90 rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border border-cyan-300/20 cursor-pointer"
+            onClick={() => fetchDetailData('tax')}
+          >
             <div className="flex items-center justify-between mb-0.5 sm:mb-2 lg:mb-4">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-0.5 sm:p-1.5 lg:p-3">
                 <FiDollarSign className="w-2 h-2 sm:w-4 sm:h-4 lg:w-6 lg:h-6" />
@@ -564,7 +693,9 @@ const FinancialPage = () => {
             financialSummary.net_income >= 0 
               ? 'from-violet-400/90 to-purple-500/90 border-violet-300/20' 
               : 'from-slate-400/90 to-slate-500/90 border-slate-300/20'
-          } rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border`}>
+          } rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg hover:shadow-xl p-1 sm:p-3 lg:p-6 text-white transform hover:scale-[1.02] transition-all duration-300 border cursor-pointer`}
+            onClick={() => fetchDetailData('net-income')}
+          >
             <div className="flex items-center justify-between mb-0.5 sm:mb-2 lg:mb-4">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-0.5 sm:p-1.5 lg:p-3">
                 <FiPieChart className="w-2 h-2 sm:w-4 sm:h-4 lg:w-6 lg:h-6" />
@@ -1162,6 +1293,202 @@ const FinancialPage = () => {
         </div>
       )}
       </div>
+
+      {/* Detail Modal */}
+      {showDetailModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-sm sm:max-w-2xl lg:max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-3 sm:p-4 lg:p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg sm:text-xl font-bold truncate pr-2">{detailModalData.title}</h2>
+                <button
+                  onClick={() => {
+                    setShowDetailModal(false);
+                    setDetailSearch('');
+                    setDetailSortBy('date-desc');
+                  }}
+                  className="text-white hover:text-gray-200 transition-colors p-1"
+                >
+                  <FiX className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3 sm:p-4 lg:p-6 max-h-[calc(95vh-80px)] sm:max-h-[calc(90vh-120px)] overflow-y-auto">
+              {detailLoading ? (
+                <div className="flex flex-col items-center justify-center py-8 sm:py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-4 border-blue-600"></div>
+                  <p className="mt-3 sm:mt-4 text-sm sm:text-base text-gray-600 text-center">Memuat data detail...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Summary */}
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-3 sm:p-4 lg:p-6 mb-4 sm:mb-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+                      <span className="text-base sm:text-lg font-semibold text-gray-700">Total {detailModalData.title.replace('Detail ', '')}</span>
+                      <span className="text-xl sm:text-2xl font-bold text-blue-600">{formatCurrency(detailModalData.total)}</span>
+                    </div>
+                  </div>
+
+                  {/* Information Panel */}
+                  <div className="bg-blue-50 border-l-4 border-blue-400 p-3 sm:p-4 mb-4 sm:mb-6">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <FiInfo className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
+                      </div>
+                      <div className="ml-2 sm:ml-3">
+                        <h3 className="text-sm font-medium text-blue-800">
+                          Informasi {detailModalData.title.replace('Detail ', '')}
+                        </h3>
+                        <div className="mt-2 text-xs sm:text-sm text-blue-700">
+                          {detailModalData.type === 'revenue' && (
+                            <div>
+                              <p className="mb-2"><strong>Total Pembayaran</strong> mencakup semua nilai kontrak dari booking yang telah dibuat oleh klien, baik yang sudah dibayar maupun yang belum dibayar.</p>
+                              <p className="text-xs text-blue-600">• Termasuk booking aktif dan dalam proses</p>
+                              <p className="text-xs text-blue-600">• Tidak termasuk booking yang dibatalkan tanpa pembayaran</p>
+                              <p className="text-xs text-blue-600">• Dasar perhitungan: Total harga layanan × jumlah hari × diskon (jika ada)</p>
+                            </div>
+                          )}
+                          {detailModalData.type === 'paid' && (
+                            <div>
+                              <p className="mb-2"><strong>Sudah Diterima</strong> mencakup semua pembayaran yang telah diterima dari klien untuk booking yang telah diselesaikan.</p>
+                              <p className="text-xs text-blue-600">• Hanya pembayaran yang sudah masuk ke rekening</p>
+                              <p className="text-xs text-blue-600">• Termasuk pembayaran penuh dan cicilan</p>
+                              <p className="text-xs text-blue-600">• Data di bawah menampilkan detail setiap pembayaran yang diterima</p>
+                            </div>
+                          )}
+                          {detailModalData.type === 'unpaid' && (
+                            <div>
+                              <p className="mb-2"><strong>Belum Dibayar</strong> mencakup sisa pembayaran yang masih menunggu dari klien untuk booking yang telah dibuat.</p>
+                              <p className="text-xs text-blue-600">• Selisih antara total kontrak dan pembayaran yang sudah diterima</p>
+                              <p className="text-xs text-blue-600">• Tidak termasuk booking yang sudah lunas</p>
+                              <p className="text-xs text-blue-600">• <strong>Tidak termasuk booking dengan status "Dibatalkan"</strong></p>
+                              <p className="text-xs text-blue-600">• Data di bawah menampilkan detail booking yang masih memiliki tunggakan</p>
+                            </div>
+                          )}
+                          {detailModalData.type === 'expenses' && (
+                            <div>
+                              <p className="mb-2"><strong>Total Pengeluaran</strong> mencakup semua biaya operasional yang dikeluarkan perusahaan untuk menjalankan bisnis.</p>
+                              <p className="text-xs text-blue-600">• Termasuk gaji karyawan, biaya sewa, marketing, dan pengeluaran lainnya</p>
+                              <p className="text-xs text-blue-600">• Berdasarkan data pengeluaran yang tercatat dalam sistem</p>
+                              <p className="text-xs text-blue-600">• Pengeluaran ini mengurangi pendapatan bersih perusahaan</p>
+                            </div>
+                          )}
+                          {detailModalData.type === 'tax' && (
+                            <div>
+                              <p className="mb-2"><strong>Pajak (PPN)</strong> mencakup pajak pertambahan nilai yang dihitung dari pembayaran yang diterima.</p>
+                              <p className="text-xs text-blue-600">• Hanya dari booking dengan status pembayaran "Lunas"</p>
+                              <p className="text-xs text-blue-600">• Hanya dari booking yang sudah dibayar (tidak termasuk yang dibatalkan)</p>
+                              <p className="text-xs text-blue-600">• Persentase PPN berdasarkan pengaturan pada saat booking</p>
+                              <p className="text-xs text-blue-600">• Data di bawah menampilkan detail PPN dari setiap transaksi</p>
+                            </div>
+                          )}
+                          {detailModalData.type === 'net-income' && (
+                            <div>
+                              <p className="mb-2"><strong>Pendapatan Bersih</strong> adalah keuntungan perusahaan setelah dikurangi semua biaya dan pajak.</p>
+                              <p className="text-xs text-blue-600">• Rumus: Total Diterima - Total Pengeluaran - Pajak</p>
+                              <p className="text-xs text-blue-600">• Menunjukkan profitabilitas bisnis secara keseluruhan</p>
+                              <p className="text-xs text-blue-600">• Dasar pengambilan keputusan keuangan perusahaan</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Search and Filter - Show only for data-displaying cards */}
+                  {detailModalData.type !== 'revenue' && detailModalData.type !== 'expenses' && detailModalData.type !== 'net-income' && (
+                    <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                        {/* Search Input */}
+                        <div className="flex-1">
+                          <div className="relative">
+                            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <input
+                              type="text"
+                              placeholder="Cari berdasarkan nama klien atau layanan..."
+                              value={detailSearch}
+                              onChange={(e) => setDetailSearch(e.target.value)}
+                              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Sort Dropdown */}
+                        <div className="sm:w-48">
+                          <select
+                            value={detailSortBy}
+                            onChange={(e) => setDetailSortBy(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-sm sm:text-base"
+                          >
+                            <option value="date-desc">Urutkan: Terbaru</option>
+                            <option value="date-asc">Urutkan: Terlama</option>
+                            <option value="amount-desc">Urutkan: Nominal Tertinggi</option>
+                            <option value="amount-asc">Urutkan: Nominal Terendah</option>
+                            <option value="name-asc">Urutkan: Nama A-Z</option>
+                            <option value="name-desc">Urutkan: Nama Z-A</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      {/* Results count */}
+                      <div className="mt-2 text-xs sm:text-sm text-gray-600">
+                        Menampilkan {getFilteredAndSortedDetailData().length} dari {detailModalData.data?.length || 0} data
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Data List - Hide for revenue, expenses, net-income */}
+                  {detailModalData.type !== 'revenue' && detailModalData.type !== 'expenses' && detailModalData.type !== 'net-income' && (
+                    <div className="space-y-3 sm:space-y-4 max-h-80 sm:max-h-96 overflow-y-auto">
+                      {getFilteredAndSortedDetailData() && getFilteredAndSortedDetailData().length > 0 ? (
+                        getFilteredAndSortedDetailData().map((item, index) => (
+                          <div key={`${detailModalData.type}-${item.id || index}`} className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+                              <div className="flex-1">
+                                {detailModalData.type === 'paid' && (
+                                  <div>
+                                    <p className="font-medium text-gray-900 text-sm sm:text-base">{item.client_name}</p>
+                                    <p className="text-xs sm:text-sm text-gray-600">{item.service_names}</p>
+                                    <p className="text-xs text-gray-500">{formatDate(item.payment_date)}</p>
+                                  </div>
+                                )}
+                                {detailModalData.type === 'unpaid' && (
+                                  <div>
+                                    <p className="font-medium text-gray-900 text-sm sm:text-base">{item.client_name}</p>
+                                    <p className="text-xs sm:text-sm text-gray-600">{item.service_names}</p>
+                                    <p className="text-xs text-gray-500">{formatDate(item.booking_date)}</p>
+                                  </div>
+                                )}
+                                {detailModalData.type === 'tax' && (
+                                  <div>
+                                    <p className="font-medium text-gray-900 text-sm sm:text-base">{item.client_name}</p>
+                                    <p className="text-xs sm:text-sm text-gray-600">{item.service_names}</p>
+                                    <p className="text-xs text-gray-500">{formatDate(item.booking_date)}</p>
+                                    <p className="text-xs text-blue-600">PPN: {item.tax_percentage}%</p>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-base sm:text-lg text-green-600">{formatCurrency(item.amount)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8 sm:py-12">
+                          <FiBarChart2 className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                          <p className="text-sm sm:text-base text-gray-500">Tidak ada data untuk ditampilkan</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

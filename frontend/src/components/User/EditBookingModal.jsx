@@ -240,7 +240,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           
           selectedServices = [{ 
             service_id: serviceExists ? booking.service_id.toString() : '', 
-            custom_price: 0, // Don't use booking.total_amount as it may include tax/fees
+            custom_price: parseFloat(booking.total_amount) || 0,
             quantity: 1,
             responsible_party_id: null
           }];
@@ -297,10 +297,6 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           return service;
         });
 
-        // For existing bookings, total_amount from database contains grand total
-        // We keep it as is since it represents the final amount to be paid
-        let calculatedTotalAmount = parseFloat(booking.total_amount) || 0;
-
         // Use parsed details if available, otherwise fall back to legacy format
         setFormData({
           client_name: booking.client_name,
@@ -317,46 +313,15 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           location_map_url: booking.location_map_url || '',
           status: displayStatus,
           payment_status: displayPaymentStatus,
-          total_amount: calculatedTotalAmount,
+          total_amount: parseFloat(booking.total_amount) || 0,
           amount_paid: parseFloat(booking.amount_paid) || 0,
-          discount_value: bookingDetails?.discount || 0,
-          discount_type: bookingDetails?.discount_type || 'rupiah', // Ambil discount_type dari database
+          discount_value: bookingDetails?.discount_value || bookingDetails?.discount || 0,
+          discount_type: bookingDetails?.discount_type || 'rupiah',
           tax_percentage: bookingDetails?.tax_percentage || 0,
           additional_fees: bookingDetails?.additional_fees || [],
           notes: userNotes, // Use extracted user notes
           responsible_parties: bookingDetails?.responsible_parties || [], // Load existing responsible parties
         });
-
-        // Calculate original subtotal and subtotal amount for display
-        if (bookingDetails) {
-          let tempSubtotal = 0;
-          
-          if (bookingDetails.services && Array.isArray(bookingDetails.services)) {
-            bookingDetails.services.forEach(service => {
-              const price = parseFloat(service.custom_price || 0);
-              const quantity = parseInt(service.quantity) || 1;
-              tempSubtotal += price * quantity;
-            });
-          }
-          
-          // Multiply by booking days
-          const bookingDays = bookingDetails.booking_days || 1;
-          tempSubtotal = tempSubtotal * bookingDays;
-          
-          setOriginalSubtotal(tempSubtotal);
-          
-          // Calculate discount amount
-          let discountAmount = 0;
-          if (bookingDetails.discount > 0) {
-            if (bookingDetails.discount_type === 'persen') {
-              discountAmount = (tempSubtotal * bookingDetails.discount) / 100;
-            } else {
-              discountAmount = bookingDetails.discount;
-            }
-          }
-          
-          setSubtotalAmount(tempSubtotal - discountAmount);
-        }
 
         // Initialize multiple selected services for checkboxes
         if (selectedServices.length > 1) {
@@ -490,13 +455,6 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     setFormData(prev => ({ ...prev, total_amount: Math.max(0, grandTotal) }));
   }, [subtotalAmount, formData.tax_percentage, formData.additional_fees]);
 
-  // Auto-sync amount_paid with total_amount when payment_status is "Lunas"
-  useEffect(() => {
-    if (formData.payment_status === 'Lunas') {
-      setFormData(prev => ({ ...prev, amount_paid: prev.total_amount }));
-    }
-  }, [formData.total_amount, formData.payment_status]);
-
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
@@ -510,44 +468,66 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
 
+    // Handle discount inputs
+    if (name === 'discount_rupiah') {
+      const numValue = parseFloat(value.replace(/\./g, '')) || 0;
+      if (numValue > originalSubtotal) {
+        setErrors(prev => ({ ...prev, discount: 'Diskon tidak boleh melebihi total biaya layanan' }));
+        return;
+      }
+      setFormData(prev => ({ 
+        ...prev, 
+        discount_value: numValue,
+        discount_type: 'rupiah'
+      }));
+      if (errors.discount) {
+        setErrors(prev => ({ ...prev, discount: '' }));
+      }
+    } else if (name === 'discount_persen') {
+      const numValue = parseFloat(value) || 0;
+      if (numValue > 100) {
+        setErrors(prev => ({ ...prev, discount: 'Diskon persen tidak boleh melebihi 100%' }));
+        return;
+      }
+      setFormData(prev => ({ 
+        ...prev, 
+        discount_value: numValue,
+        discount_type: 'persen'
+      }));
+      if (errors.discount) {
+        setErrors(prev => ({ ...prev, discount: '' }));
+      }
+    }
+
     // Auto-adjust amount_paid based on payment_status
     if (name === 'payment_status') {
       if (value === 'Belum Bayar') {
         // Set amount_paid to 0 if status is "Belum Bayar"
         setFormData(prev => ({ ...prev, amount_paid: 0 }));
       } else if (value === 'Lunas') {
-        // Set amount_paid to total_amount (grand total) if status is "Lunas"
+        // Set amount_paid to total_amount if status is "Lunas"
         setFormData(prev => ({ ...prev, amount_paid: prev.total_amount }));
       } else if (value === 'DP') {
         // For DP, ensure amount_paid doesn't exceed 90% of total_amount
         setFormData(prev => {
           const maxDP = Math.floor(prev.total_amount * 0.9);
-          return {
-            ...prev,
-            amount_paid: Math.min(prev.amount_paid, maxDP)
-          };
+          return { ...prev, amount_paid: Math.min(prev.amount_paid, maxDP) };
         });
       }
     }
 
     // Validate amount_paid for DP status
     if (name === 'amount_paid' && formData.payment_status === 'DP') {
-      const stringValue = String(value || '').replace(/\./g, '');
-      const numValue = parseFloat(stringValue) || 0;
-      const maxDP = Math.floor(formData.total_amount * 0.9);
-      if (numValue > maxDP) {
-        setErrors(prev => ({
-          ...prev,
-          amount_paid: `DP maksimal 90% dari total (Rp ${maxDP.toLocaleString('id-ID')})`
-        }));
+      const maxDP = Math.floor(formData.total_amount * 0.9); // 90% of total
+      if (parseFloat(value) > maxDP) {
+        setErrors(prev => ({ ...prev, amount_paid: `DP maksimal 90% dari total (Rp ${maxDP.toLocaleString('id-ID')})` }));
         return;
       }
     }
 
     // Handle discount inputs
     if (name === 'discount_rupiah') {
-      const stringValue = String(value || '').replace(/\./g, '');
-      const numValue = parseFloat(stringValue) || 0;
+      const numValue = parseFloat(value.replace(/\./g, '')) || 0;
       if (numValue > formData.total_amount) {
         setErrors(prev => ({ ...prev, discount: 'Diskon tidak boleh melebihi total biaya layanan' }));
         return;
@@ -892,18 +872,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     }
     
     if (formData.amount_paid < 0) newErrors.amount_paid = 'Jumlah tidak valid';
-    const totalAfterDiscount = (() => {
-      let discountAmount = 0;
-      if (formData.discount_value > 0) {
-        if (formData.discount_type === 'persen') {
-          discountAmount = (formData.total_amount * formData.discount_value) / 100;
-        } else {
-          discountAmount = formData.discount_value;
-        }
-      }
-      return formData.total_amount - discountAmount;
-    })();
-    if (formData.payment_status !== 'Lunas' && formData.amount_paid > totalAfterDiscount) {
+    if (formData.payment_status !== 'Lunas' && formData.amount_paid > formData.total_amount) {
       newErrors.amount_paid = 'Jumlah dibayar tidak boleh melebihi total';
     }
 
@@ -945,7 +914,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           responsible_party_id: s.responsible_party_id || null
         })),
         discount: formData.discount_value,
-        discount_type: formData.discount_type, // Tambahkan discount_type
+        discount_type: formData.discount_type,
         tax_percentage: formData.tax_percentage,
         additional_fees: formData.additional_fees,
         payment_status: formData.payment_status,
@@ -1679,12 +1648,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
             )}
           </div>
 
-        </div>
-
-        {/* Status Information - Side by Side */}
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Status</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 mt-4">
             <Select
               label="Status Booking"
               name="status"
@@ -1731,12 +1695,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 <p className="text-xs text-gray-500">Total layanan sebelum diskon</p>
                 {formData.discount_value > 0 && (
                   <p className="text-xs text-green-600">
-                    Harga setelah diskon: Rp {subtotalAmount.toLocaleString('id-ID')}
-                  </p>
-                )}
-                {formData.tax_percentage > 0 && (
-                  <p className="text-xs text-blue-600">
-                    Pajak ({formData.tax_percentage}%): Rp {(subtotalAmount * formData.tax_percentage / 100).toLocaleString('id-ID')}
+                    Setelah diskon: Rp {subtotalAmount.toLocaleString('id-ID')}
                   </p>
                 )}
               </div>
@@ -1779,9 +1738,6 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 <p className="mt-1 text-xs text-blue-600">
                   Maksimal 90% dari total keseluruhan (Rp {Math.floor(formData.total_amount * 0.9).toLocaleString('id-ID')})
                 </p>
-              )}
-              {formData.payment_status === 'Lunas' && (
-                <p className="mt-1 text-xs text-green-600">Otomatis terisi dengan total keseluruhan karena status lunas</p>
               )}
               {errors.amount_paid && (
                 <p className="mt-1 text-xs text-red-600">{errors.amount_paid}</p>
@@ -1901,8 +1857,8 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
             )}
           </div>
 
-          {/* Status Pembayaran - Moved to Status section above */}
-          
+
+
           {/* Total Summary */}
           <div className="p-4 bg-white border-2 border-blue-200 rounded-lg">
             <h4 className="font-semibold text-gray-900 mb-3">Rincian Biaya</h4>
@@ -1981,7 +1937,12 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
             <div className="flex justify-between text-sm mb-1.5">
               <span className="text-gray-700">Total Layanan (1 hari):</span>
               <span className="text-gray-900 font-medium">
-                Rp {(originalSubtotal / Math.max(1, parseInt(formData.booking_days) || 1)).toLocaleString('id-ID')}
+                Rp {formData.selected_services.reduce((sum, s) => {
+                  const srv = services.find(srv => srv.id === parseInt(s.service_id));
+                  const price = srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0;
+                  const quantity = s.quantity || 1;
+                  return sum + (price * quantity);
+                }, 0).toLocaleString('id-ID')}
               </span>
             </div>
 
@@ -1990,7 +1951,12 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
               <div className="flex justify-between text-sm mb-1.5 text-blue-600">
                 <span>× {formData.booking_days} hari:</span>
                 <span className="font-medium">
-                  Rp {originalSubtotal.toLocaleString('id-ID')}
+                  Rp {(formData.selected_services.reduce((sum, s) => {
+                    const srv = services.find(srv => srv.id === parseInt(s.service_id));
+                    const price = srv ? parseFloat(s.custom_price || srv.default_price || 0) : 0;
+                    const quantity = s.quantity || 1;
+                    return sum + (price * quantity);
+                  }, 0) * formData.booking_days).toLocaleString('id-ID')}
                 </span>
               </div>
             )}
@@ -2058,25 +2024,15 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
               <span className="text-gray-900 font-medium">Rp {formData.amount_paid.toLocaleString('id-ID')}</span>
             </div>
 
-            {/* Remaining Amount - Only show if not Lunas */}
-            {formData.payment_status !== 'Lunas' && (
-              <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                <span className="text-sm font-medium text-gray-700">Sisa Pembayaran:</span>
-                <span className={`text-base font-bold ${
-                  Math.max(0, formData.total_amount - formData.amount_paid) > 0 ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  Rp {Math.max(0, formData.total_amount - formData.amount_paid).toLocaleString('id-ID')}
-                </span>
-              </div>
-            )}
-
-            {/* Lunas Status */}
-            {formData.payment_status === 'Lunas' && (
-              <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                <span className="text-sm font-medium text-gray-700">Status:</span>
-                <span className="text-base font-bold text-green-600">LUNAS</span>
-              </div>
-            )}
+            {/* Remaining Amount */}
+            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+              <span className="text-sm font-medium text-gray-700">Sisa Pembayaran:</span>
+              <span className={`text-base font-bold ${
+                Math.max(0, formData.total_amount - formData.amount_paid) > 0 ? 'text-red-600' : 'text-green-600'
+              }`}>
+                Rp {Math.max(0, formData.total_amount - formData.amount_paid).toLocaleString('id-ID')}
+              </span>
+            </div>
           </div>
         </div>
 
