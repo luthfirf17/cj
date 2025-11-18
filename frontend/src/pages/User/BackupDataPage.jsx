@@ -1568,183 +1568,181 @@ const BackupDataPage = () => {
             return false;
           }
           
-          // Normalize dates - Compare dates as shown to user (local dates)
-          // The issue: dates from backup may have different UTC offsets than current DB dates
-          // Solution: Extract the date part directly from the ISO string before timezone conversion
-          const extractDateOnly = (dateStr) => {
-            if (!dateStr) return '';
-            // Take first 10 chars of ISO string (YYYY-MM-DD) - this is the user's intended date
-            return dateStr.substring(0, 10);
+          // ===== MORE ROBUST DATE COMPARISON =====
+          // Handle different date formats and timezone issues
+          const normalizeDate = (dateStr) => {
+            if (!dateStr) return null;
+            try {
+              // If it's already YYYY-MM-DD format, use it directly
+              if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return dateStr;
+              }
+              // If it's ISO string, extract date part
+              if (dateStr.includes('T')) {
+                return dateStr.split('T')[0];
+              }
+              // Try to parse as date and format
+              const date = new Date(dateStr);
+              if (!isNaN(date.getTime())) {
+                return date.toISOString().split('T')[0];
+              }
+              return null;
+            } catch (e) {
+              console.log(`Date parsing error for "${dateStr}":`, e.message);
+              return null;
+            }
           };
           
-          const itemDateOnly = extractDateOnly(item.booking_date);
-          const existingDateOnly = extractDateOnly(existing.booking_date);
+          const itemDate = normalizeDate(item.booking_date);
+          const existingDate = normalizeDate(existing.booking_date);
           
-          // Log date comparison for debugging
-          if (itemClientName && existingClientName && itemClientName === existingClientName) {
-            console.log(`    🔍 Comparing ${itemClientName} bookings:`, {
-              itemDateRaw: item.booking_date,
-              existingDateRaw: existing.booking_date,
-              itemDateExtracted: itemDateOnly,
-              existingDateExtracted: existingDateOnly,
-              itemTime: item.booking_time,
-              existingTime: existing.booking_time,
-              dateMatch: itemDateOnly === existingDateOnly
-            });
-          }
+          // Allow ±1 day difference for timezone issues
+          const getDateDifference = (date1, date2) => {
+            if (!date1 || !date2) return Infinity;
+            const d1 = new Date(date1);
+            const d2 = new Date(date2);
+            return Math.abs((d1 - d2) / (1000 * 60 * 60 * 24));
+          };
           
-          // Normalize time format (remove seconds if exists)
+          const dateDifference = getDateDifference(itemDate, existingDate);
+          const sameDate = dateDifference <= 1; // Allow ±1 day difference
+          
+          // ===== TIME COMPARISON =====
           const normalizeTime = (time) => {
             if (!time) return '';
+            // Remove seconds if present (HH:mm:ss -> HH:mm)
             const parts = time.split(':');
-            return `${parts[0]}:${parts[1]}`; // Only HH:mm
+            return `${parts[0]}:${parts[1]}`;
           };
           
           const itemTime = normalizeTime(item.booking_time);
           const existingTime = normalizeTime(existing.booking_time);
+          const sameTime = itemTime === existingTime;
           
-          // Helper function to normalize strings for comparison
+          // ===== CLIENT & SERVICE COMPARISON =====
           const normalizeString = (str) => {
             if (!str) return '';
             return String(str).trim().toLowerCase();
           };
           
-          // Helper function to normalize numbers for comparison
+          const sameClient = normalizeString(itemClientName) === normalizeString(existingClientName);
+          const sameService = normalizeString(itemServiceName) === normalizeString(existingServiceName);
+          
+          // ===== STATUS COMPARISON =====
+          const sameStatus = normalizeString(item.status) === normalizeString(existing.status);
+          
+          // ===== PRICE COMPARISON =====
           const normalizeNumber = (num) => {
             if (num === null || num === undefined) return 0;
             return parseFloat(num) || 0;
           };
           
-          // ===== COMPARE ALL BOOKING DETAILS (EXCEPT ID) =====
+          const sameTotalPrice = Math.abs(normalizeNumber(item.total_price) - normalizeNumber(existing.total_price)) < 0.01;
           
-          // 1. Date & Time MUST match (with ±1 day tolerance for timezone issues)
-          // Parse dates to compare with tolerance
-          const itemDateObj = new Date(itemDateOnly);
-          const existingDateObj = new Date(existingDateOnly);
-          const dayDifference = Math.abs((itemDateObj - existingDateObj) / (1000 * 60 * 60 * 24));
-          const sameDate = dayDifference <= 1; // Allow ±1 day difference due to timezone offset
-          const sameTime = itemTime === existingTime;
-          
-          // 2. Client MUST match (by name)
-          const sameClient = normalizeString(itemClientName) === normalizeString(existingClientName);
-          
-          // 3. Service MUST match (by name)
-          const sameService = normalizeString(itemServiceName) === normalizeString(existingServiceName);
-          
-          // 4. Status MUST match
-          const sameStatus = normalizeString(item.status) === normalizeString(existing.status);
-          
-          // 5. Prices MUST match (if available)
-          const sameTotalPrice = normalizeNumber(item.total_price) === normalizeNumber(existing.total_price);
-          
-          // 6. Notes comparison - compare meaningful content, not exact JSON match
-          // Notes may contain service_id that changes after import, so we compare key fields only
+          // ===== NOTES COMPARISON (MORE ROBUST) =====
           const compareNotes = () => {
             try {
               // If both notes are empty/null, consider them matching
               if (!item.notes && !existing.notes) return true;
               if (!item.notes || !existing.notes) return false;
               
-              // Try to parse as JSON
-              const itemNotesObj = typeof item.notes === 'string' ? JSON.parse(item.notes) : item.notes;
-              const existingNotesObj = typeof existing.notes === 'string' ? JSON.parse(existing.notes) : existing.notes;
+              // Try to parse as JSON, but be more tolerant
+              let itemNotesObj, existingNotesObj;
               
-              // Compare only user-visible fields (ignore service_id and other internal IDs)
+              try {
+                itemNotesObj = typeof item.notes === 'string' ? JSON.parse(item.notes) : item.notes;
+              } catch (e) {
+                // If parsing fails, treat as plain string
+                itemNotesObj = { raw_notes: item.notes };
+              }
+              
+              try {
+                existingNotesObj = typeof existing.notes === 'string' ? JSON.parse(existing.notes) : existing.notes;
+              } catch (e) {
+                // If parsing fails, treat as plain string
+                existingNotesObj = { raw_notes: existing.notes };
+              }
+              
+              // Compare key user-visible fields
               const compareField = (field) => {
                 const itemVal = normalizeString(itemNotesObj[field]);
                 const existingVal = normalizeString(existingNotesObj[field]);
                 return itemVal === existingVal;
               };
               
-              // Check key fields that user actually entered
-              const fieldsToCompare = ['user_notes', 'booking_date', 'booking_time', 
-                                       'booking_date_end', 'booking_time_end', 'booking_days',
-                                       'discount', 'discount_type', 'tax_percentage', 'payment_status', 'amount_paid'];
+              // Check essential fields that user actually entered
+              const essentialFields = ['user_notes', 'booking_days', 'discount', 'discount_type', 'tax_percentage'];
+              const essentialMatch = essentialFields.every(field => compareField(field));
               
-              const basicFieldsMatch = fieldsToCompare.every(field => compareField(field));
-              
-              // Compare selected_services array (including quantity)
-              const compareSelectedServices = () => {
-                const itemServices = itemNotesObj.selected_services;
-                const existingServices = existingNotesObj.selected_services;
+              // Compare selected_services if available
+              const compareServices = () => {
+                const itemServices = itemNotesObj.selected_services || itemNotesObj.services;
+                const existingServices = existingNotesObj.selected_services || existingNotesObj.services;
                 
-                // If both are empty/null, consider them matching
                 if (!itemServices && !existingServices) return true;
                 if (!itemServices || !existingServices) return false;
-                
-                // Both must be arrays
                 if (!Array.isArray(itemServices) || !Array.isArray(existingServices)) return false;
-                
-                // Must have same length
                 if (itemServices.length !== existingServices.length) return false;
                 
-                // Compare each service (by name and quantity)
-                return itemServices.every((itemService, index) => {
-                  const existingService = existingServices[index];
-                  if (!existingService) return false;
+                return itemServices.every((itemSvc, idx) => {
+                  const existingSvc = existingServices[idx];
+                  if (!existingSvc) return false;
                   
-                  // Compare service name
-                  const sameName = normalizeString(itemService.service_name) === normalizeString(existingService.service_name);
+                  const sameName = normalizeString(itemSvc.service_name) === normalizeString(existingSvc.service_name);
+                  const sameQty = (parseInt(itemSvc.quantity) || 1) === (parseInt(existingSvc.quantity) || 1);
                   
-                  // Compare quantity (default to 1 if not specified)
-                  const itemQuantity = parseInt(itemService.quantity) || 1;
-                  const existingQuantity = parseInt(existingService.quantity) || 1;
-                  const sameQuantity = itemQuantity === existingQuantity;
-                  
-                  return sameName && sameQuantity;
+                  return sameName && sameQty;
                 });
               };
               
-              const servicesMatch = compareSelectedServices();
+              const servicesMatch = compareServices();
               
-              return basicFieldsMatch && servicesMatch;
+              return essentialMatch && servicesMatch;
+              
             } catch (e) {
-              // If JSON parsing fails, fall back to string comparison
-              return normalizeString(item.notes) === normalizeString(existing.notes);
+              // Ultimate fallback: compare as strings
+              console.log('Notes comparison error, falling back to string comparison:', e.message);
+              return normalizeString(String(item.notes)) === normalizeString(String(existing.notes));
             }
           };
+          
           const sameNotes = compareNotes();
           
-          // 7. Payment status comparison (optional field - may not exist in backup)
-          // If payment_status is undefined/null in backup but exists in current, consider it a match
-          // because backup data from old exports may not have this field
+          // ===== PAYMENT STATUS (OPTIONAL - for backward compatibility) =====
           const itemPaymentStatus = normalizeString(item.payment_status);
           const existingPaymentStatus = normalizeString(existing.payment_status);
+          // If payment status is missing from backup, consider it matching
           const samePaymentStatus = !itemPaymentStatus || !existingPaymentStatus || 
                                    itemPaymentStatus === existingPaymentStatus;
           
-          // 8. Location fields are OPTIONAL (new feature - old backups won't have this)
-          // If both have location data, compare it. If one doesn't have it, still consider match
-          const itemLocationName = normalizeString(item.location_name);
-          const existingLocationName = normalizeString(existing.location_name);
-          const sameLocation = !itemLocationName || !existingLocationName || 
-                              itemLocationName === existingLocationName;
+          // ===== LOCATION (OPTIONAL - new feature) =====
+          const itemLocation = normalizeString(item.location_name);
+          const existingLocation = normalizeString(existing.location_name);
+          const sameLocation = !itemLocation || !existingLocation || 
+                              itemLocation === existingLocation;
           
-          // MATCH if ALL CORE criteria match
-          // Note: We don't check discount, final_price, location_map_url because they may not exist
-          // Payment status and location are optional because old backup files may not have these fields
-          const isMatch = sameDate && sameTime && sameClient && sameService && sameStatus &&
-                         sameTotalPrice && sameNotes && samePaymentStatus && sameLocation;
+          // ===== FINAL MATCH DECISION =====
+          // Require: date (±1 day), time, client, service, status, price, notes
+          // Optional: payment_status, location (for backward compatibility)
+          const isMatch = sameDate && sameTime && sameClient && sameService && 
+                         sameStatus && sameTotalPrice && sameNotes;
           
-          // Detailed logging for debugging - log EVERY comparison attempt
-          if (itemClientName && existingClientName) {
-            const nameMatch = normalizeString(itemClientName) === normalizeString(existingClientName);
-            if (nameMatch) {
-              console.log(`  🔍 Found client match: "${itemClientName}" (backup idx ${index} vs current idx ${existingIndex})`);
-              console.log(`    Date: ${itemDateOnly} vs ${existingDateOnly} (diff: ${dayDifference.toFixed(1)} days) → ${sameDate ? '✅' : '❌'}`);
-              console.log(`    Time: ${itemTime} vs ${existingTime} → ${sameTime ? '✅' : '❌'}`);
-              console.log(`    Service: "${itemServiceName}" vs "${existingServiceName}" → ${sameService ? '✅' : '❌'}`);
-              
-              if (sameDate && sameTime && sameService) {
-                console.log(`    ⭐ POTENTIAL MATCH! Checking other fields...`);
-                console.log(`    Status: ${item.status} vs ${existing.status} → ${sameStatus ? '✅' : '❌'}`);
-                console.log(`    Total Price: ${item.total_price} vs ${existing.total_price} → ${sameTotalPrice ? '✅' : '❌'}`);
-                console.log(`    Notes: "${item.notes}" vs "${existing.notes}" → ${sameNotes ? '✅' : '❌'}`);
-                console.log(`    Payment Status: ${item.payment_status} vs ${existing.payment_status} → ${samePaymentStatus ? '✅' : '❌'}`);
-                console.log(`    Location: "${item.location_name}" vs "${existing.location_name}" → ${sameLocation ? '✅' : '❌'}`);
-                console.log(`    FINAL RESULT: ${isMatch ? '🎯 DUPLICATE FOUND!' : '❌ Not duplicate'}`);
-              }
-            }
+          // Enhanced logging for debugging
+          if (sameClient && sameService) {
+            console.log(`🔍 Potential booking match found:`, {
+              client: itemClientName,
+              service: itemServiceName,
+              backupIdx: index,
+              currentIdx: existingIndex,
+              dateMatch: `${itemDate} vs ${existingDate} (${dateDifference.toFixed(1)} days)`,
+              timeMatch: `${itemTime} vs ${existingTime}`,
+              statusMatch: `${item.status} vs ${existing.status}`,
+              priceMatch: `${item.total_price} vs ${existing.total_price}`,
+              notesMatch: sameNotes,
+              paymentMatch: samePaymentStatus ? '✅' : '⚠️ (optional)',
+              locationMatch: sameLocation ? '✅' : '⚠️ (optional)',
+              finalResult: isMatch ? '🎯 DUPLICATE!' : '❌ Not duplicate'
+            });
           }
           
           return isMatch;
