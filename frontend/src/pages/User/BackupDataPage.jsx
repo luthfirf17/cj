@@ -14,6 +14,7 @@ import {
   FiSearch
 } from 'react-icons/fi';
 import api from '../../services/api';
+import authService from '../../services/authService';
 
 const BackupDataPage = () => {
   const [loading, setLoading] = useState(false);
@@ -139,14 +140,14 @@ const BackupDataPage = () => {
     try {
       setLoading(true);
       const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, bookingsRes, paymentsRes, expensesRes, categoriesRes] = await Promise.all([
-        api.get('/clients'),
-        api.get('/services'),
-        api.get('/user/responsible-parties'),
-        api.get('/user/service-responsible-parties'),
-        api.get('/bookings'),
-        api.get('/payments'),
-        api.get('/expenses'),
-        api.get('/expense-categories')
+        api.get('/clients').catch(() => ({ data: [] })),
+        api.get('/services').catch(() => ({ data: { data: [] } })),
+        api.get('/user/responsible-parties').catch(() => ({ data: { data: [] } })),
+        api.get('/user/service-responsible-parties').catch(() => ({ data: { data: [] } })),
+        api.get('/bookings').catch(() => ({ data: [] })),
+        api.get('/payments').catch(() => ({ data: [] })),
+        api.get('/expenses').catch(() => ({ data: [] })),
+        api.get('/expense-categories').catch(() => ({ data: [] }))
       ]);
 
       // Calculate size of all data combined
@@ -200,14 +201,14 @@ const BackupDataPage = () => {
     try {
       setLoading(true);
       const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, bookingsRes, paymentsRes, expensesRes, categoriesRes] = await Promise.all([
-        api.get('/clients'),
-        api.get('/services'),
-        api.get('/user/responsible-parties'),
-        api.get('/user/service-responsible-parties'),
-        api.get('/bookings'),
-        api.get('/payments'),
-        api.get('/expenses'),
-        api.get('/expense-categories')
+        api.get('/clients').catch(() => ({ data: [] })),
+        api.get('/services').catch(() => ({ data: { data: [] } })),
+        api.get('/user/responsible-parties').catch(() => ({ data: { data: [] } })),
+        api.get('/user/service-responsible-parties').catch(() => ({ data: { data: [] } })),
+        api.get('/bookings').catch(() => ({ data: [] })),
+        api.get('/payments').catch(() => ({ data: [] })),
+        api.get('/expenses').catch(() => ({ data: [] })),
+        api.get('/expense-categories').catch(() => ({ data: [] }))
       ]);
 
       console.log('📊 Fetched Data:', {
@@ -1204,13 +1205,13 @@ const BackupDataPage = () => {
         
         // Fetch current data from backend to compare
         const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, categoriesRes, bookingsRes, expensesRes] = await Promise.all([
-          api.get('/clients'),
-          api.get('/services'),
-          api.get('/user/responsible-parties'),
-          api.get('/user/service-responsible-parties'),
-          api.get('/expense-categories'),
-          api.get('/bookings'),
-          api.get('/expenses')
+          api.get('/clients').catch(() => ({ data: [] })),
+          api.get('/services').catch(() => ({ data: { data: [] } })),
+          api.get('/user/responsible-parties').catch(() => ({ data: { data: [] } })),
+          api.get('/user/service-responsible-parties').catch(() => ({ data: { data: [] } })),
+          api.get('/expense-categories').catch(() => ({ data: [] })),
+          api.get('/bookings').catch(() => ({ data: [] })),
+          api.get('/expenses').catch(() => ({ data: [] }))
         ]);
         
         console.log('🌐 ===== API RESPONSES =====');

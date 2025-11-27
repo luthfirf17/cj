@@ -38,6 +38,7 @@ import NoPinNotificationModal from '../../components/Common/NoPinNotificationMod
 import { format } from '../../utils/format';
 import { getWhatsAppLink } from '../../utils/phoneUtils';
 import api from '../../services/api';
+import authService from '../../services/authService';
 
 const UserDashboard = () => {
   const navigate = useNavigate();
@@ -132,7 +133,9 @@ const UserDashboard = () => {
     fetchStats();
     fetchFilterOptions();
     fetchGlobalResponsibleParties();
-    fetchServiceResponsibleParties();
+    if (authService.isAuthenticated()) {
+      fetchServiceResponsibleParties();
+    }
   }, []);
 
   // Fetch Bookings with debounce (faster for search)
@@ -227,7 +230,11 @@ const UserDashboard = () => {
         setServiceResponsibleParties(response.data.data);
       }
     } catch (error) {
-      console.error('Error fetching service responsible parties:', error);
+      // Only log error if it's not authentication related
+      if (error.response?.status !== 401 && error.response?.status !== 403) {
+        console.error('Error fetching service responsible parties:', error);
+      }
+      // Silently fail for authentication errors - user will be redirected by ProtectedRoute
     }
   };
 

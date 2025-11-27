@@ -8,6 +8,7 @@ import CountryCodeDropdown from '../Common/CountryCodeDropdown';
 import { FiDollarSign, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMapPin, FiMinus, FiUser, FiMessageCircle, FiChevronDown } from 'react-icons/fi';
 import { formatPhoneForWhatsApp } from '../../utils/phoneUtils';
 import api from '../../services/api';
+import authService from '../../services/authService';
 
 const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
   const [loading, setLoading] = useState(false);
@@ -781,7 +782,11 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         setServiceResponsibleParties(response.data.data);
       }
     } catch (error) {
-      console.error('Error fetching service responsible parties:', error);
+      // Only log error if it's not authentication related
+      if (error.response?.status !== 401 && error.response?.status !== 403) {
+        console.error('Error fetching service responsible parties:', error);
+      }
+      // Silently fail for authentication errors
     }
   };
 
