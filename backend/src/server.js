@@ -274,33 +274,25 @@ app.get('/api/auth/check-email', async (req, res) => {
 
 // Google OAuth login route - for existing users
 app.get('/api/auth/google/login',
-  (req, res, next) => {
-    // Store action type in session
-    req.session.googleAction = 'login';
-    next();
-  },
   passport.authenticate('google', { 
     scope: [
       'profile', 
       'email',
       'https://www.googleapis.com/auth/calendar.readonly'
-    ]
+    ],
+    state: 'login'
   })
 );
 
 // Google OAuth register route - for new users
 app.get('/api/auth/google/register',
-  (req, res, next) => {
-    // Store action type in session
-    req.session.googleAction = 'register';
-    next();
-  },
   passport.authenticate('google', { 
     scope: [
       'profile', 
       'email',
       'https://www.googleapis.com/auth/calendar.readonly'
-    ]
+    ],
+    state: 'register'
   })
 );
 
@@ -311,7 +303,8 @@ app.get('/api/auth/google',
       'profile', 
       'email',
       'https://www.googleapis.com/auth/calendar.readonly'
-    ]
+    ],
+    state: 'login'
   })
 );
 
@@ -342,31 +335,15 @@ app.get('/api/auth/google/callback',
     try {
       console.log('OAuth callback successful, user:', req.user);
       
-      const googleAction = req.session.googleAction || 'login';
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      // Get action from OAuth state parameter (reliable, survives redirects)
+      const googleAction = req.query.state || 'login';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://catatjasamu.com';
       
       // Check if this is a new user (created just now) or existing
       const isNewUser = req.user.created_at && 
         (new Date() - new Date(req.user.created_at)) < 10000; // Created within last 10 seconds
       
       console.log('Google Action:', googleAction, 'Is New User:', isNewUser);
-      
-      // Validation: If trying to login but user is new (doesn't exist), redirect to register
-      if (googleAction === 'login' && isNewUser) {
-        // Delete the just-created user since they should register first
-        await query('DELETE FROM users WHERE id = $1', [req.user.id]);
-        console.log('User tried to login but account does not exist, deleted temp user');
-        return res.redirect(`${frontendUrl}/register?error=not_registered&email=${encodeURIComponent(req.user.email)}&message=Akun%20belum%20terdaftar.%20Silakan%20daftar%20terlebih%20dahulu.`);
-      }
-      
-      // Validation: If trying to register but user already existed, redirect to login
-      if (googleAction === 'register' && !isNewUser) {
-        console.log('User tried to register but account already exists');
-        return res.redirect(`${frontendUrl}/login?error=already_registered&email=${encodeURIComponent(req.user.email)}&message=Akun%20sudah%20terdaftar.%20Silakan%20login.`);
-      }
-
-      // Clear the action from session
-      delete req.session.googleAction;
 
       // Generate JWT token for the authenticated user
       const jwt = require('jsonwebtoken');
@@ -381,8 +358,11 @@ app.get('/api/auth/google/callback',
         { expiresIn: '7d' }
       );
 
-      // Redirect to frontend with token and provider info
-      const redirectUrl = `${frontendUrl}/login?token=${token}&provider=google&success=true&openCalendar=true`;
+      // Both login and register with Google should work seamlessly
+      // - If user exists: they get logged in (regardless of login/register action)
+      // - If user is new: they get auto-registered and logged in
+      const isRegistration = isNewUser ? 'true' : 'false';
+      const redirectUrl = `${frontendUrl}/login?token=${token}&provider=google&success=true&openCalendar=true&newUser=${isRegistration}`;
 
       console.log('Redirecting to:', redirectUrl);
       res.redirect(redirectUrl);
