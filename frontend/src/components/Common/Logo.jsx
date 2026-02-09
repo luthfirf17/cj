@@ -2,9 +2,10 @@ import React from 'react';
 import logoImage from '../../assets/images/logo.png';
 
 const Logo = ({ size = 'md', showText = true, variant = 'default' }) => {
-  // Size variants
+  // Size variants - optimized for mobile (Samsung Z Fold 5 - 344px width)
   const sizes = {
-    sm: { circle: 'w-8 h-8', text: 'text-sm', logo: 'text-base', gap: 'gap-2' },
+    xs: { circle: 'w-6 h-6', text: 'text-[10px]', logo: 'text-xs', gap: 'gap-1' },
+    sm: { circle: 'w-7 h-7', text: 'text-xs', logo: 'text-sm', gap: 'gap-1.5' },
     md: { circle: 'w-10 h-10', text: 'text-base', logo: 'text-lg', gap: 'gap-2.5' },
     lg: { circle: 'w-14 h-14', text: 'text-xl', logo: 'text-2xl', gap: 'gap-3' },
     xl: { circle: 'w-20 h-20', text: 'text-3xl', logo: 'text-3xl', gap: 'gap-4' }
@@ -43,7 +44,7 @@ const Logo = ({ size = 'md', showText = true, variant = 'default' }) => {
           
           {/* "Jasamu" - Gold gradient untuk accent */}
           <span 
-            className={`${size === 'sm' ? 'text-xs' : size === 'md' ? 'text-sm' : size === 'lg' ? 'text-lg' : 'text-xl'} font-semibold leading-tight -mt-1 tracking-wide`}
+            className={`${size === 'xs' ? 'text-[8px]' : size === 'sm' ? 'text-[10px]' : size === 'md' ? 'text-sm' : size === 'lg' ? 'text-lg' : 'text-xl'} font-semibold leading-tight -mt-0.5 tracking-wide`}
             style={{
               background: 'linear-gradient(180deg, #e6c97a 0%, #c9a961 100%)',
               WebkitBackgroundClip: 'text',

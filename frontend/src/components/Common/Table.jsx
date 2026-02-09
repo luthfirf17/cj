@@ -33,8 +33,8 @@ const Table = ({
 
   return (
     <div className={`w-full ${className}`}>
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 -mx-1 sm:mx-0">
+        <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
           <thead className="bg-gray-50">
             <tr>
               {columns.map((column, index) => (
@@ -42,7 +42,7 @@ const Table = ({
                   key={index}
                   scope="col"
                   className={`
-                    px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider
+                    px-2 sm:px-4 md:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap
                     ${column.className || ''}
                   `}
                   style={{ width: column.width }}
@@ -57,7 +57,7 @@ const Table = ({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-6 py-12 text-center text-gray-500"
+                  className="px-4 sm:px-6 py-8 sm:py-12 text-center text-gray-500 text-xs sm:text-sm"
                 >
                   {emptyMessage}
                 </td>
@@ -76,7 +76,7 @@ const Table = ({
                     <td
                       key={colIndex}
                       className={`
-                        px-6 py-4 whitespace-nowrap text-sm text-gray-900
+                        px-2 sm:px-4 md:px-6 py-2 sm:py-4 text-[10px] sm:text-xs md:text-sm text-gray-900
                         ${column.cellClassName || ''}
                       `}
                     >
@@ -94,26 +94,34 @@ const Table = ({
 
       {/* Pagination */}
       {pagination && data.length > 0 && (
-        <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200 sm:px-6 mt-4">
-          <div className="flex-1 flex justify-between sm:hidden">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2 sm:px-4 md:px-6 py-2 sm:py-3 bg-white border-t border-gray-200 mt-2 sm:mt-4">
+          {/* Mobile: Simple pagination */}
+          <div className="flex w-full sm:hidden justify-between items-center">
             <Button
               variant="outline"
               size="sm"
               onClick={pagination.onPreviousPage}
               disabled={pagination.currentPage === 1}
+              className="text-xs px-2 py-1"
             >
-              Previous
+              ← Prev
             </Button>
+            <span className="text-xs text-gray-600">
+              {pagination.currentPage} / {pagination.totalPages}
+            </span>
             <Button
               variant="outline"
               size="sm"
               onClick={pagination.onNextPage}
               disabled={pagination.currentPage === pagination.totalPages}
+              className="text-xs px-2 py-1"
             >
-              Next
+              Next →
             </Button>
           </div>
-          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+          
+          {/* Tablet+: Full pagination */}
+          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between w-full">
             <div>
               <p className="text-sm text-gray-700">
                 Menampilkan{' '}

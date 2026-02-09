@@ -21,8 +21,13 @@ import UserDashboard from './pages/User/UserDashboard'
 import FinancialPage from './pages/User/FinancialPage'
 import SettingsPage from './pages/User/SettingsPage'
 import BackupDataPage from './pages/User/BackupDataPage'
+import ClientSubmissionsPage from './pages/User/ClientSubmissionsPage'
+import ClientsPage from './pages/User/ClientsPage'
 // import UserProfile from './pages/User/Profile'
 // ... other user pages
+
+// Client Pages
+import ClientBooking from './pages/ClientBooking'
 
 // Common Pages
 import NotFound from './pages/NotFound'
@@ -39,6 +44,8 @@ function App() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/booking/:bookingCode" element={<ClientBooking />} />
+        <Route path="/client-booking/:userId" element={<ClientBooking />} />
 
         {/* Admin Routes - Protected & Role-based */}
         <Route element={<ProtectedRoute />}>
@@ -70,15 +77,14 @@ function App() {
             <Route path="/user" element={<UserLayout />}>
               <Route index element={<Navigate to="/user/dashboard" replace />} />
               <Route path="dashboard" element={<UserDashboard />} />
+              <Route path="clients" element={<ClientsPage />} />
               <Route path="financial" element={<FinancialPage />} />
               <Route path="backup" element={<BackupDataPage />} />
+              <Route path="client-submissions" element={<ClientSubmissionsPage />} />
               
               {/* Bookings */}
               <Route path="bookings" element={<div>Booking List (Coming Soon)</div>} />
               <Route path="bookings/:id" element={<div>Booking Detail (Coming Soon)</div>} />
-              
-              {/* Clients */}
-              <Route path="clients" element={<div>Client List (Coming Soon)</div>} />
               
               {/* Services */}
               <Route path="services" element={<div>Service List (Coming Soon)</div>} />

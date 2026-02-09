@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { format as dateFnsFormat } from 'date-fns';
+import { id } from 'date-fns/locale';
 import {
   FiCalendar,
   FiCheckCircle,
@@ -21,7 +23,15 @@ import {
   FiPackage,
   FiRefreshCw,
   FiSearch,
+  FiLink,
+  FiCopy,
+  FiCheck,
+  FiShare2,
+  FiGrid,
+  FiColumns,
+  FiClock,
 } from 'react-icons/fi';
+import { QRCodeSVG } from 'qrcode.react';
 import { StatCard } from '../../components/Common/Card';
 import Table from '../../components/Common/Table';
 import Button from '../../components/Common/Button';
@@ -30,11 +40,14 @@ import SearchInput from '../../components/Common/SearchInput';
 import Select from '../../components/Common/Select';
 import SearchableDropdown from '../../components/Common/SearchableDropdown';
 import CalendarView from '../../components/CalendarView';
+import BookingCardView from '../../components/User/booking/BookingCardView';
 import AddBookingModal from '../../components/User/AddBookingModal';
 import EditBookingModal from '../../components/User/EditBookingModal';
 import GenerateInvoiceModal from '../../components/User/GenerateInvoiceModal';
 import PinModal from '../../components/Common/PinModal';
 import NoPinNotificationModal from '../../components/Common/NoPinNotificationModal';
+import GoogleCalendar from '../../components/User/GoogleCalendar';
+import Modal from '../../components/Common/Modal';
 import { format } from '../../utils/format';
 import { getWhatsAppLink } from '../../utils/phoneUtils';
 import api from '../../services/api';
@@ -59,7 +72,8 @@ const UserDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState([]); // allow multi-select of status cards
   const [selectedPaymentStatuses, setSelectedPaymentStatuses] = useState([]); // allow multi-select of payment status cards
-  const [viewMode, setViewMode] = useState('table'); // 'table' or 'calendar'
+  const [viewMode, setViewMode] = useState('table'); // 'table', 'calendar', or 'card'
+  const [cardColumns, setCardColumns] = useState(3); // Grid columns for card view (3-6)
   
   // Modern multi-criteria sorting
   const [sortCriteria, setSortCriteria] = useState([]);
@@ -89,6 +103,19 @@ const UserDashboard = () => {
   const [showPinModal, setShowPinModal] = useState(false);
   const [showNoPinModal, setShowNoPinModal] = useState(false);
   const [bookingToDelete, setBookingToDelete] = useState(null);
+  
+  // Google Calendar Modal
+  const [showGoogleCalendar, setShowGoogleCalendar] = useState(false);
+  
+  // Client Booking Link Modal
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [bookingLink, setBookingLink] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [bookingLinkData, setBookingLinkData] = useState(null);
+  const [loadingBookingLink, setLoadingBookingLink] = useState(false);
+  
+  // Current user state
+  const [currentUser, setCurrentUser] = useState(null);
   
   // Filter dropdowns
   const [filterMonth, setFilterMonth] = useState('');
@@ -130,13 +157,76 @@ const UserDashboard = () => {
 
   // Fetch Stats and Filter Options once on mount
   useEffect(() => {
-    fetchStats();
-    fetchFilterOptions();
-    fetchGlobalResponsibleParties();
     if (authService.isAuthenticated()) {
-      fetchServiceResponsibleParties();
+      // Refresh user data to ensure auth_provider is up-to-date
+      authService.refreshUser();
+      const user = authService.getCurrentUser();
+      setCurrentUser(user);
+      
+      // Fetch booking link from backend
+      if (user) {
+        fetchBookingLink();
+      }
+      
+      // Check if we need to open Google Calendar modal
+      if (window.location.search.includes('openCalendar=true')) {
+        setShowGoogleCalendar(true);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     }
   }, []);
+
+  // Fetch booking link data from backend
+  const fetchBookingLink = async () => {
+    try {
+      const response = await api.get('/user/booking-link');
+      if (response.data.success) {
+        setBookingLinkData(response.data.data);
+        setBookingLink(response.data.data.full_url);
+      }
+    } catch (error) {
+      console.error('Error fetching booking link:', error);
+    }
+  };
+
+  // Regenerate booking code
+  const regenerateBookingCode = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin membuat link booking baru? Link lama akan tidak bisa digunakan lagi.')) {
+      return;
+    }
+    
+    setLoadingBookingLink(true);
+    try {
+      const response = await api.post('/user/booking-link/regenerate');
+      if (response.data.success) {
+        setBookingLinkData(response.data.data);
+        setBookingLink(response.data.data.full_url);
+        alert('Link booking baru berhasil dibuat!');
+      }
+    } catch (error) {
+      console.error('Error regenerating booking code:', error);
+      alert('Gagal membuat link booking baru');
+    } finally {
+      setLoadingBookingLink(false);
+    }
+  };
+
+  // Copy booking link to clipboard
+  const copyBookingLink = () => {
+    navigator.clipboard.writeText(bookingLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
+  // Fetch data when currentUser is set
+  useEffect(() => {
+    if (currentUser) {
+      fetchStats();
+      fetchFilterOptions();
+      fetchGlobalResponsibleParties();
+      fetchServiceResponsibleParties();
+    }
+  }, [currentUser]);
 
   // Fetch Bookings with debounce (faster for search)
   useEffect(() => {
@@ -150,7 +240,7 @@ const UserDashboard = () => {
   const fetchStats = async () => {
     try {
       const response = await api.get('/user/dashboard/stats', {
-        params: { user_id: 2 }
+        params: { user_id: currentUser?.id }
       });
       
       if (response.data.success) {
@@ -170,7 +260,7 @@ const UserDashboard = () => {
     try {
       // Fetch services
       const servicesRes = await api.get('/user/services', {
-        params: { user_id: 2 }
+        params: { user_id: currentUser?.id }
       });
       if (servicesRes.data.success) {
         setAvailableServices(servicesRes.data.data);
@@ -178,7 +268,7 @@ const UserDashboard = () => {
       
       // Fetch clients
       const clientsRes = await api.get('/user/clients', {
-        params: { user_id: 2 }
+        params: { user_id: currentUser?.id }
       });
       if (clientsRes.data.success) {
         setAvailableClients(clientsRes.data.data);
@@ -223,7 +313,7 @@ const UserDashboard = () => {
   const fetchServiceResponsibleParties = async () => {
     try {
       const response = await api.get('/user/service-responsible-parties', {
-        params: { user_id: 2 }
+        params: { user_id: currentUser?.id }
       });
       if (response.data.success) {
         console.log('🔗 Service Responsible Parties loaded:', response.data.data.length, 'mappings');
@@ -242,7 +332,7 @@ const UserDashboard = () => {
     setLoading(true);
     try {
       const params = {
-        user_id: 2,
+        user_id: currentUser?.id,
         page: pagination.currentPage,
         pageSize: pagination.pageSize,
       };
@@ -293,20 +383,48 @@ const UserDashboard = () => {
           
           if (booking.booking_details && booking.booking_details.services && Array.isArray(booking.booking_details.services)) {
             // Use booking_details.services for multiple services with full details
-            allServices = booking.booking_details.services
-              .filter(s => s) // Filter out null/undefined services
-              .map(s => ({
+            const filteredServices = booking.booking_details.services.filter(s => s);
+            const bookingTotalPrice = Number(booking.total_amount || booking.total_price || 0);
+            
+            // Calculate total quantity across all services
+            const totalQuantity = filteredServices.reduce((sum, s) => sum + (Number(s.quantity) || 1), 0);
+            
+            allServices = filteredServices.map(s => {
+              // Try to get price from service data first
+              let servicePrice = Number(s.price || s.service_price || s.price_per_item || 0);
+              let serviceTotalPrice = Number(s.total_price || s.total || 0);
+              const serviceQty = Number(s.quantity) || 1;
+              
+              // If no price data in service, calculate from booking total
+              if (servicePrice === 0 && serviceTotalPrice === 0 && bookingTotalPrice > 0) {
+                // Distribute booking total proportionally based on quantity
+                serviceTotalPrice = (bookingTotalPrice * serviceQty) / totalQuantity;
+                servicePrice = serviceTotalPrice / serviceQty;
+              } else if (servicePrice > 0 && serviceTotalPrice === 0) {
+                serviceTotalPrice = servicePrice * serviceQty;
+              } else if (serviceTotalPrice > 0 && servicePrice === 0) {
+                servicePrice = serviceTotalPrice / serviceQty;
+              }
+              
+              return {
                 id: Number(s.service_id || s.id),
                 name: s.name || s.service_name || s.serviceName || s,
                 responsible_party_id: s.responsible_party_id || null,
-                quantity: s.quantity || 1
-              }));
+                quantity: serviceQty,
+                price: servicePrice,
+                total_price: serviceTotalPrice
+              };
+            });
           } else {
             // Single service case - use booking.service_id and service_name
+            const bookingTotalPrice = Number(booking.total_amount || booking.total_price || 0);
             allServices = [{
               id: booking.service_id,
               name: booking.service_name,
-              responsible_party_id: null // Will be resolved during filtering
+              responsible_party_id: null,
+              quantity: 1,
+              price: bookingTotalPrice,
+              total_price: bookingTotalPrice
             }];
           }
           
@@ -326,56 +444,6 @@ const UserDashboard = () => {
           
           return convertedBooking;
         });
-        
-        // Apply client-side search filter (nama, kontak, layanan, tanggal, lokasi)
-        if (searchQuery && searchQuery.trim() !== '') {
-          const query = searchQuery.toLowerCase().trim();
-          convertedBookings = convertedBookings.filter(booking => {
-            // Search in client name
-            const matchName = booking.client_name?.toLowerCase().includes(query);
-            
-            // Search in contact/phone
-            const matchContact = booking.contact?.toLowerCase().includes(query) || 
-                                 booking.phone?.toLowerCase().includes(query);
-            
-            // Search in services
-            const matchService = booking.services && Array.isArray(booking.services) && booking.services.some(service => {
-              if (!service) return false;
-              const serviceName = service.name || '';
-              return serviceName.toLowerCase().includes(query);
-            });
-            
-            // Search in location
-            const matchLocation = booking.location_name?.toLowerCase().includes(query);
-            
-            // Search in date (formatted and raw)
-            const bookingDate = new Date(booking.booking_date);
-            const monthNames = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 
-                               'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
-            const monthShortNames = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 
-                                    'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
-            
-            const day = bookingDate.getDate();
-            const month = bookingDate.getMonth();
-            const year = bookingDate.getFullYear();
-            
-            // Match day (1-31)
-            const matchDay = query.includes(String(day));
-            // Match month name (full or short)
-            const matchMonthName = monthNames[month].includes(query) || monthShortNames[month].includes(query);
-            // Match month number (01-12)
-            const matchMonthNumber = query.includes(String(month + 1).padStart(2, '0')) || query.includes(String(month + 1));
-            // Match year (2024, 2025, etc)
-            const matchYear = query.includes(String(year));
-            // Match formatted date string (08 Januari 2026)
-            const formattedDate = format.date(booking.booking_date).toLowerCase();
-            const matchFormattedDate = formattedDate.includes(query);
-            
-            const matchDate = matchDay || matchMonthName || matchMonthNumber || matchYear || matchFormattedDate;
-            
-            return matchName || matchContact || matchService || matchLocation || matchDate;
-          });
-        }
         
         // Apply date filters (month/year)
         if (filterMonth || filterYear) {
@@ -553,6 +621,17 @@ const UserDashboard = () => {
   // Table Columns
   const columns = [
     {
+      header: 'Nama Booking',
+      accessor: 'booking_name',
+      render: (value, row) => (
+        <div>
+          <p className={`font-medium ${value ? 'text-gray-900' : 'text-gray-400 italic'}`}>
+            {value || 'Belum diberi nama'}
+          </p>
+        </div>
+      ),
+    },
+    {
       header: 'Klien',
       accessor: 'client_name',
       render: (value, row) => (
@@ -653,10 +732,27 @@ const UserDashboard = () => {
       header: 'Tanggal, Waktu, Tempat',
       accessor: 'booking_date',
       render: (value, row) => {
+        // Format date with short month name (3 letters)
+        const formatDateShort = (date) => {
+          if (!date) return '-'
+          return dateFnsFormat(new Date(date), 'dd MMM yyyy', { locale: id })
+        }
+
         return (
           <div>
-            <p className="text-xs text-gray-900">{format.date(value)}</p>
-            <p className="text-xs text-gray-500">{format.time(value)}</p>
+            {/* Date display - show range if end date is different */}
+            <p className="text-xs text-gray-900">
+              {formatDateShort(value)}
+              {row.booking_date_end && row.booking_date_end !== value && ` - ${formatDateShort(row.booking_date_end)}`}
+            </p>
+            
+            {/* Time display - show range if end time exists */}
+            <p className="text-xs text-gray-500">
+              {dateFnsFormat(new Date(value), 'HH:mm', { locale: id })}
+              {row.booking_time_end && ` - ${dateFnsFormat(new Date(row.booking_time_end), 'HH:mm', { locale: id })}`}
+            </p>
+
+            {/* Location */}
             {row.location_name && row.location_name !== '' && (
               <div className="flex items-center gap-1 mt-0.5">
                 <FiMapPin className="w-2.5 h-2.5 text-blue-600" />
@@ -932,17 +1028,66 @@ const UserDashboard = () => {
       filtered = filtered.filter(booking => selectedPaymentStatuses.includes(booking.payment_status));
     }
 
-    // Apply search query filter for responsible parties
-    if (searchQuery && searchQuery.trim()) {
-      const trimmedQuery = searchQuery.trim().toLowerCase();
+    // Apply search query filter (combined for all fields including responsible parties)
+    if (searchQuery && searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(booking => {
+        // Search in client name
+        const matchName = booking.client_name?.toLowerCase().includes(query);
+        
+        // Search in booking name
+        const matchBookingName = booking.booking_name?.toLowerCase().includes(query);
+        
+        // Search in contact/phone
+        const matchContact = booking.contact?.toLowerCase().includes(query) || 
+                             booking.phone?.toLowerCase().includes(query);
+        
+        // Search in services
+        const matchService = booking.services && Array.isArray(booking.services) && booking.services.some(service => {
+          if (!service) return false;
+          const serviceName = service.name || '';
+          return serviceName.toLowerCase().includes(query);
+        });
+        
+        // Search in location
+        const matchLocation = booking.location_name?.toLowerCase().includes(query);
+        
+        // Search in date (formatted and raw)
+        const bookingDate = new Date(booking.booking_date);
+        const monthNames = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 
+                           'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
+        const monthShortNames = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 
+                                'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
+        
+        const day = bookingDate.getDate();
+        const month = bookingDate.getMonth();
+        const year = bookingDate.getFullYear();
+        
+        // Match day (1-31)
+        const matchDay = query.includes(String(day));
+        // Match month name (full or short)
+        const matchMonthName = monthNames[month].includes(query) || monthShortNames[month].includes(query);
+        // Match month number (01-12)
+        const matchMonthNumber = query.includes(String(month + 1).padStart(2, '0')) || query.includes(String(month + 1));
+        // Match year (2024, 2025, etc)
+        const matchYear = query.includes(String(year));
+        // Match formatted date string (08 Jan 2026)
+        const formattedDate = dateFnsFormat(new Date(booking.booking_date), 'dd MMM yyyy', { locale: id }).toLowerCase();
+        const matchFormattedDate = formattedDate.includes(query);
+        
+        const matchDate = matchDay || matchMonthName || matchMonthNumber || matchYear || matchFormattedDate;
+
+        // Search in responsible parties (both booking-level and service-level)
+        const trimmedQuery = query;
         // Check booking-level responsible parties
         const hasBookingResponsible = booking.responsible_parties?.some(party =>
-          party.name.toLowerCase().includes(trimmedQuery)
+          party?.name?.toLowerCase().includes(trimmedQuery)
         );
 
         // Check service-level responsible parties
         const hasServiceResponsible = booking.services?.some(service => {
+          if (!service) return false;
+          
           let serviceResponsibleParty = null;
 
           // First priority: use service.responsible_party_id from booking data
@@ -962,7 +1107,7 @@ const UserDashboard = () => {
           // Third priority: try to match by service name from global parties (for legacy data)
           if (!serviceResponsibleParty && service.name) {
             serviceResponsibleParty = globalResponsibleParties.find(grp =>
-              grp.name && service.name.toLowerCase().includes(grp.name.toLowerCase())
+              grp?.name && service.name.toLowerCase().includes(grp.name.toLowerCase())
             );
           }
 
@@ -971,7 +1116,9 @@ const UserDashboard = () => {
           return serviceResponsibleName && serviceResponsibleName.toLowerCase().includes(trimmedQuery);
         });
 
-        return hasBookingResponsible || hasServiceResponsible;
+        const matchResponsible = hasBookingResponsible || hasServiceResponsible;
+        
+        return matchName || matchBookingName || matchContact || matchService || matchLocation || matchDate || matchResponsible;
       });
     }
 
@@ -979,7 +1126,7 @@ const UserDashboard = () => {
   }, [bookings, selectedMonths, selectedYears, selectedClients, selectedServices, selectedResponsibleParties, selectedStatuses, selectedPaymentStatuses, serviceResponsibleParties, globalResponsibleParties, searchQuery]);
   
   // Modern multi-criteria sorting
-  const sortedBookings = filteredBookings.sort((a, b) => {
+  const sortedBookings = [...filteredBookings].sort((a, b) => {
     // If no sort criteria, return default (by date desc)
     if (sortCriteria.length === 0) {
       return new Date(b.booking_date) - new Date(a.booking_date);
@@ -1177,75 +1324,124 @@ const UserDashboard = () => {
       </div>
 
       {/* Filters & Actions */}
-      <div className="bg-white rounded-lg border border-gray-200 p-2 sm:p-3 space-y-1.5 sm:space-y-2">
+      <div className="bg-white rounded-lg border border-gray-200 p-1.5 xs:p-2 sm:p-3 space-y-1.5 sm:space-y-2">
         {/* Row 1: Search Bar (Center) */}
         <div className="flex justify-center">
-          <div className="w-full max-w-2xl px-2 sm:px-0">
+          <div className="w-full max-w-2xl">
             <SearchInput
               value={searchQuery}
               onChange={handleSearch}
               placeholder="Cari nama klien, kontak, layanan, tanggal, atau lokasi..."
+              className="text-xs sm:text-sm"
             />
           </div>
         </div>
 
-        {/* Row 2: View Toggle and Add Button */}
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center justify-center w-full">
-          {/* View Toggle and Add Button Container */}
-          <div className="flex items-center justify-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg flex items-center gap-1 transition-colors text-xs font-medium ${
-                  viewMode === 'table'
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <FiFilter size={12} />
-                <span className="hidden sm:inline">Tabel</span>
-              </button>
-              <button
-                onClick={() => setViewMode('calendar')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg flex items-center gap-1 transition-colors text-xs font-medium ${
-                  viewMode === 'calendar'
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <FiCalendar size={12} />
-                <span className="hidden sm:inline">Kalender</span>
-              </button>
-            </div>
-
-            {/* Add Button */}
-            <Button
-              variant="primary"
-              icon={<FiPlus />}
-              onClick={() => setShowAddModal(true)}
-              className="text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg justify-center sm:justify-start"
-            >
-              <span className="hidden sm:inline">Tambah Booking</span>
-              <span className="sm:hidden">Tambah</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Row 3: Modern Sort Chips - CENTER ALIGNED */}
-        <div className="space-y-3 sm:space-y-4 w-full">
-          <div className="flex items-center justify-center w-full">
+        {/* Row 2: View Toggle and Add Button - Mobile optimized */}
+        <div className="flex flex-wrap gap-1 xs:gap-1.5 sm:gap-2 items-center justify-center w-full">
+          {/* View Toggle Buttons - Compact on mobile */}
+          <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-1.5">
             <button
-              onClick={resetSortCriteria}
-              className="text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 sm:gap-1.5 transition-colors px-2 sm:px-3 py-1.5 sm:py-2 rounded-md sm:rounded-lg hover:bg-blue-50"
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 xs:px-2 xs:py-1 sm:px-3 sm:py-1.5 rounded sm:rounded-lg flex items-center gap-0.5 sm:gap-1 transition-colors text-[10px] xs:text-xs font-medium touch-manipulation ${
+                viewMode === 'table'
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Tabel"
             >
-              <FiRefreshCw size={12} className="sm:w-3 sm:h-3" />
-              <span className="hidden sm:inline">Reset Semua Filter</span>
-              <span className="sm:hidden">Reset</span>
+              <FiFilter size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5" />
+              <span className="hidden xs:inline">Tabel</span>
+            </button>
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-1.5 xs:px-2 xs:py-1 sm:px-3 sm:py-1.5 rounded sm:rounded-lg flex items-center gap-0.5 sm:gap-1 transition-colors text-[10px] xs:text-xs font-medium touch-manipulation ${
+                viewMode === 'card'
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Card"
+            >
+              <FiGrid size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5" />
+              <span className="hidden xs:inline">Card</span>
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`p-1.5 xs:px-2 xs:py-1 sm:px-3 sm:py-1.5 rounded sm:rounded-lg flex items-center gap-0.5 sm:gap-1 transition-colors text-[10px] xs:text-xs font-medium touch-manipulation ${
+                viewMode === 'calendar'
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Kalender"
+            >
+              <FiCalendar size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5" />
+              <span className="hidden xs:inline">Kalender</span>
             </button>
           </div>
 
-          {/* Sort Options Chips - CENTER ALIGNED */}
-          <div className="flex flex-wrap justify-center items-center gap-3 sm:gap-4 md:gap-5 lg:gap-6 w-full max-w-full">
+          {/* Add Button - Compact on mobile */}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1 text-[10px] xs:text-xs px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-1.5 sm:py-2 rounded sm:rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium touch-manipulation transition-colors"
+          >
+            <FiPlus size={14} />
+            <span className="hidden xs:inline">Tambah</span>
+          </button>
+
+          {/* Client Booking Link Button - Icon only on mobile */}
+          <button
+            onClick={() => setShowLinkModal(true)}
+            className="flex items-center gap-1 text-[10px] xs:text-xs px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-1.5 sm:py-2 rounded sm:rounded-lg border border-orange-300 text-orange-600 hover:bg-orange-50 font-medium touch-manipulation transition-colors"
+            title="Link Booking untuk Klien"
+          >
+            <FiLink size={14} />
+            <span className="hidden sm:inline">Link</span>
+          </button>
+
+          {/* Google Calendar Button - Only for Google OAuth users */}
+          {(() => {
+            const currentUser = authService.getCurrentUser();
+            return currentUser?.auth_provider === 'google';
+          })() && (
+            <button
+              onClick={() => setShowGoogleCalendar(true)}
+              className="flex items-center gap-1 text-[10px] xs:text-xs px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-1.5 sm:py-2 rounded sm:rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 font-medium touch-manipulation transition-colors"
+              title="Buka Google Calendar"
+            >
+              <FiCalendar size={14} />
+              <span className="hidden sm:inline lg:hidden">GCal</span>
+              <span className="hidden lg:inline">Google Calendar</span>
+            </button>
+          )}
+        </div>
+
+        {/* Row 3: Modern Sort Chips - CENTER ALIGNED */}
+        <div className="space-y-2 sm:space-y-3 w-full">
+          <div className="flex items-center justify-center w-full">
+            <button
+              onClick={resetSortCriteria}
+              className="text-[10px] xs:text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 transition-colors px-1.5 xs:px-2 sm:px-3 py-1 xs:py-1.5 sm:py-2 rounded sm:rounded-lg hover:bg-blue-50 touch-manipulation"
+            >
+              <FiRefreshCw size={10} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5" />
+              <span>Reset</span>
+            </button>
+          </div>
+
+          {/* Mobile Backdrop - Appears when any dropdown is open */}
+          {(showDateOptions || showClientOptions || showServiceOptions || showResponsibleOptions) && (
+            <div 
+              className="fixed inset-0 bg-black/30 z-[55] xs:hidden"
+              onClick={() => {
+                setShowDateOptions(false);
+                setShowClientOptions(false);
+                setShowServiceOptions(false);
+                setShowResponsibleOptions(false);
+              }}
+            />
+          )}
+
+          {/* Sort Options Chips - Mobile optimized grid layout */}
+          <div className="grid grid-cols-4 xs:flex xs:flex-wrap justify-center items-center gap-1 xs:gap-2 sm:gap-3 md:gap-4 w-full max-w-full px-0.5 xs:px-0">
             {/* Date Sort with Sub-Options */}
             <div className="relative">
               <button
@@ -1256,27 +1452,27 @@ const UserDashboard = () => {
                   setShowServiceOptions(false);
                   setShowResponsibleOptions(false);
                 }}
-                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
+                className={`group px-1.5 xs:px-2 sm:px-3 md:px-4 py-1 xs:py-1.5 sm:py-2 rounded-full flex items-center justify-center gap-0.5 xs:gap-1 sm:gap-1.5 text-[10px] xs:text-xs sm:text-sm font-medium transition-all touch-manipulation ${
                   sortCriteria.find(c => c.id === 'date')
                     ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
                 }`}
               >
-                <FiCalendar size={12} className="sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Tanggal</span>
-                <span className="sm:hidden">📅</span>
+                <FiCalendar size={10} className="xs:w-3 xs:h-3 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline lg:hidden">Tgl</span>
+                <span className="hidden lg:inline">Tanggal</span>
                 {sortCriteria.find(c => c.id === 'date') && (
                   <>
                     {sortCriteria.find(c => c.id === 'date')?.order === 'desc' ? (
-                      <FiArrowDown size={12} className="sm:w-3 sm:h-3" />
+                      <FiArrowDown size={8} className="xs:w-2.5 xs:h-2.5 sm:w-3 sm:h-3" />
                     ) : (
-                      <FiArrowUp size={12} className="sm:w-3 sm:h-3" />
+                      <FiArrowUp size={8} className="xs:w-2.5 xs:h-2.5 sm:w-3 sm:h-3" />
                     )}
                     <span
                       onClick={(e) => { e.stopPropagation(); removeSortCriteria('date'); setShowDateOptions(false); }}
-                      className="ml-1 hover:bg-blue-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
+                      className="ml-0.5 hover:bg-blue-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
                     >
-                      <FiX size={12} className="sm:w-3 sm:h-3" />
+                      <FiX size={8} className="xs:w-2.5 xs:h-2.5 sm:w-3 sm:h-3" />
                     </span>
                   </>
                 )}
@@ -1284,48 +1480,47 @@ const UserDashboard = () => {
               
               {/* Date Sub-Options Dropdown */}
               {showDateOptions && (
-                <div className="absolute top-full left-1/2 transform -translate-x-1/3 sm:left-0 sm:transform-none mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-3 md:p-4 z-50 w-[65vw] sm:w-72 md:w-80 lg:w-96 max-w-[calc(100vw-2rem)] sm:max-w-none max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
+                <div className="fixed xs:absolute top-1/2 xs:top-full left-1/2 xs:left-0 transform -translate-x-1/2 -translate-y-1/2 xs:translate-y-0 xs:-translate-x-0 mt-0 xs:mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-3 sm:p-4 z-[60] w-[90vw] xs:w-[80vw] sm:w-72 md:w-80 max-w-sm max-h-[70vh] xs:max-h-[50vh] overflow-auto">
                   {/* Header with Close Button */}
-                  <div className="flex items-center justify-between mb-2 sm:mb-3 pb-2 border-b border-gray-200">
-                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Tanggal</h4>
+                  <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-gray-200">
+                    <h4 className="text-[10px] xs:text-xs sm:text-sm font-semibold text-gray-800">Filter Tanggal</h4>
                     <button
                       onClick={() => setShowDateOptions(false)}
-                      className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                      className="p-0.5 xs:p-1 hover:bg-gray-100 rounded-full transition-colors"
                       title="Tutup"
                     >
-                      <FiX size={14} className="sm:w-4 sm:h-4 text-gray-500" />
+                      <FiX size={12} className="sm:w-4 sm:h-4 text-gray-500" />
                     </button>
                   </div>
                   
-                  <div className="space-y-2 sm:space-y-3 overflow-y-auto max-h-32 sm:max-h-40 md:max-h-48">
+                  <div className="space-y-2 overflow-y-auto">
                     <div>
-                      <p className="text-xs font-semibold text-gray-700 mb-2">Pilih Bulan:</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 sm:gap-2">
+                      <p className="text-[10px] xs:text-xs font-semibold text-gray-700 mb-1.5">Pilih Bulan:</p>
+                      <div className="grid grid-cols-4 xs:grid-cols-4 sm:grid-cols-4 gap-0.5 xs:gap-1">
                         {availableMonths.map((month) => (
                           <button
                             key={month.value}
                             onClick={() => toggleMonth(month.value)}
-                            className={`px-1 sm:px-2 py-1 text-xs rounded transition-colors ${
+                            className={`px-1 py-0.5 xs:py-1 text-[9px] xs:text-[10px] sm:text-xs rounded transition-colors touch-manipulation ${
                               selectedMonths.includes(month.value)
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                           >
-                            <span className="hidden sm:inline">{month.label.substring(0, 3)}</span>
-                            <span className="sm:hidden">{month.label.substring(0, 3)}</span>
+                            {month.label.substring(0, 3)}
                           </button>
                         ))}
                       </div>
                     </div>
                     
                     <div>
-                      <p className="text-xs font-semibold text-gray-700 mb-2">Pilih Tahun:</p>
-                      <div className="flex flex-wrap gap-1 sm:gap-2">
+                      <p className="text-[10px] xs:text-xs font-semibold text-gray-700 mb-1.5">Pilih Tahun:</p>
+                      <div className="flex flex-wrap gap-0.5 xs:gap-1">
                         {availableYears.map((year) => (
                           <button
                             key={year.value}
                             onClick={() => toggleYear(year.value)}
-                            className={`px-2 sm:px-3 py-1 text-xs rounded transition-colors ${
+                            className={`px-1.5 xs:px-2 py-0.5 xs:py-1 text-[10px] xs:text-xs rounded transition-colors touch-manipulation ${
                               selectedYears.includes(year.value)
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1351,27 +1546,26 @@ const UserDashboard = () => {
                   setShowServiceOptions(false);
                   setShowResponsibleOptions(false);
                 }}
-                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
+                className={`group px-1.5 xs:px-2 sm:px-3 md:px-4 py-1 xs:py-1.5 sm:py-2 rounded-full flex items-center justify-center gap-0.5 xs:gap-1 sm:gap-1.5 text-[10px] xs:text-xs sm:text-sm font-medium transition-all touch-manipulation ${
                   sortCriteria.find(c => c.id === 'client')
                     ? 'bg-purple-600 text-white shadow-md hover:bg-purple-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
                 }`}
               >
-                <FiUser size={12} className="sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Nama Klien</span>
-                <span className="sm:hidden">👤</span>
+                <FiUser size={10} className="xs:w-3 xs:h-3 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline">Klien</span>
                 {sortCriteria.find(c => c.id === 'client') && (
                   <>
                     {sortCriteria.find(c => c.id === 'client')?.order === 'asc' ? (
-                      <span className="text-xs sm:text-xs">A→Z</span>
+                      <span className="text-[8px] xs:text-[10px]">A→Z</span>
                     ) : (
-                      <span className="text-xs sm:text-xs">Z→A</span>
+                      <span className="text-[8px] xs:text-[10px]">Z→A</span>
                     )}
                     <span
                       onClick={(e) => { e.stopPropagation(); removeSortCriteria('client'); setShowClientOptions(false); }}
-                      className="ml-1 hover:bg-purple-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
+                      className="ml-0.5 hover:bg-purple-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
                     >
-                      <FiX size={12} className="sm:w-3 sm:h-3" />
+                      <FiX size={8} className="xs:w-2.5 xs:h-2.5 sm:w-3 sm:h-3" />
                     </span>
                   </>
                 )}
@@ -1379,13 +1573,13 @@ const UserDashboard = () => {
               
               {/* Client Sub-Options Dropdown */}
               {showClientOptions && (
-                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-3 md:p-4 z-50 w-[65vw] sm:w-64 md:w-72 lg:w-80 max-w-[calc(100vw-2rem)] max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
+                <div className="fixed xs:absolute top-1/2 xs:top-full left-1/2 transform -translate-x-1/2 -translate-y-1/2 xs:translate-y-0 mt-0 xs:mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-3 sm:p-4 z-[60] w-[90vw] xs:w-[80vw] sm:w-64 md:w-72 max-w-sm max-h-[70vh] xs:max-h-[50vh] overflow-auto">
                   {/* Header with Close Button */}
-                  <div className="flex items-center justify-between mb-1.5 sm:mb-2 md:mb-3 pb-1.5 sm:pb-2 border-b border-gray-200">
-                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Klien</h4>
+                  <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-gray-200">
+                    <h4 className="text-[10px] xs:text-xs sm:text-sm font-semibold text-gray-800">Filter Klien</h4>
                     <button
                       onClick={() => setShowClientOptions(false)}
-                      className="p-0.5 sm:p-1 hover:bg-gray-100 rounded-full transition-colors"
+                      className="p-0.5 xs:p-1 hover:bg-gray-100 rounded-full transition-colors"
                       title="Tutup"
                     >
                       <FiX size={12} className="sm:w-4 sm:h-4 text-gray-500" />
@@ -1393,20 +1587,20 @@ const UserDashboard = () => {
                   </div>
                   
                   {/* Search Box */}
-                  <div className="mb-1.5 sm:mb-2 relative">
-                    <FiSearch className="absolute left-1.5 sm:left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={10} />
+                  <div className="mb-1.5 relative">
+                    <FiSearch className="absolute left-1.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={10} />
                     <input
                       type="text"
                       value={clientSearchQuery}
                       onChange={(e) => setClientSearchQuery(e.target.value)}
-                      placeholder="Cari nama klien..."
-                      className="w-full pl-6 sm:pl-7 pr-2 sm:pr-3 py-1 sm:py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Cari klien..."
+                      className="w-full pl-5 xs:pl-6 pr-2 py-1 text-[10px] xs:text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                   
                   {/* Client List with Scroll */}
-                  <div className="space-y-0.5 sm:space-y-1 max-h-24 sm:max-h-32 md:max-h-40 lg:max-h-48 overflow-y-auto">
+                  <div className="space-y-0.5 max-h-32 xs:max-h-40 overflow-y-auto">
                     {availableClients
                       .filter(client => 
                         client.name.toLowerCase().includes(clientSearchQuery.toLowerCase())
@@ -1415,20 +1609,20 @@ const UserDashboard = () => {
                         <button
                           key={client.name}
                           onClick={() => toggleClient(client.name)}
-                          className={`w-full px-1 sm:px-2 md:px-3 py-1 sm:py-1.5 md:py-2 text-left text-xs sm:text-xs md:text-sm rounded transition-colors whitespace-normal break-words leading-tight min-h-[2rem] sm:min-h-[2.5rem] flex items-center ${
+                          className={`w-full px-1.5 xs:px-2 py-1 xs:py-1.5 text-left text-[10px] xs:text-xs rounded transition-colors touch-manipulation truncate ${
                             selectedClients.includes(client.name)
                               ? 'bg-purple-600 text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          <span className="truncate">{client.name}</span>
+                          {client.name}
                         </button>
                       ))}
                     {availableClients.filter(client => 
                       client.name.toLowerCase().includes(clientSearchQuery.toLowerCase())
                     ).length === 0 && (
-                      <div className="text-xs text-gray-500 text-center py-2">
-                        Tidak ditemukan klien "{clientSearchQuery}"
+                      <div className="text-[10px] xs:text-xs text-gray-500 text-center py-2">
+                        Tidak ditemukan
                       </div>
                     )}
                   </div>
@@ -1446,27 +1640,26 @@ const UserDashboard = () => {
                   setShowClientOptions(false);
                   setShowResponsibleOptions(false);
                 }}
-                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
+                className={`group px-1.5 xs:px-2 sm:px-3 md:px-4 py-1 xs:py-1.5 sm:py-2 rounded-full flex items-center justify-center gap-0.5 xs:gap-1 sm:gap-1.5 text-[10px] xs:text-xs sm:text-sm font-medium transition-all touch-manipulation ${
                   sortCriteria.find(c => c.id === 'service')
                     ? 'bg-green-600 text-white shadow-md hover:bg-green-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
                 }`}
               >
-                <FiPackage size={12} className="sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Layanan</span>
-                <span className="sm:hidden">📦</span>
+                <FiPackage size={10} className="xs:w-3 xs:h-3 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline">Layanan</span>
                 {sortCriteria.find(c => c.id === 'service') && (
                   <>
                     {sortCriteria.find(c => c.id === 'service')?.order === 'asc' ? (
-                      <span className="text-xs sm:text-xs">A→Z</span>
+                      <span className="text-[8px] xs:text-[10px]">A→Z</span>
                     ) : (
-                      <span className="text-xs sm:text-xs">Z→A</span>
+                      <span className="text-[8px] xs:text-[10px]">Z→A</span>
                     )}
                     <span
                       onClick={(e) => { e.stopPropagation(); removeSortCriteria('service'); setShowServiceOptions(false); }}
-                      className="ml-1 hover:bg-green-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
+                      className="ml-0.5 hover:bg-green-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
                     >
-                      <FiX size={12} className="sm:w-3 sm:h-3" />
+                      <FiX size={8} className="xs:w-2.5 xs:h-2.5 sm:w-3 sm:h-3" />
                     </span>
                   </>
                 )}
@@ -1474,34 +1667,34 @@ const UserDashboard = () => {
               
               {/* Service Sub-Options Dropdown */}
               {showServiceOptions && (
-                <div className="absolute top-full left-3/4 transform -translate-x-3/4 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-4 z-50 w-[65vw] sm:w-64 md:w-72 lg:w-80 max-w-[calc(100vw-2rem)] max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
+                <div className="fixed xs:absolute top-1/2 xs:top-full left-1/2 transform -translate-x-1/2 -translate-y-1/2 xs:translate-y-0 mt-0 xs:mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-3 sm:p-4 z-[60] w-[90vw] xs:w-[80vw] sm:w-64 md:w-72 max-w-sm max-h-[70vh] xs:max-h-[50vh] overflow-auto">
                   {/* Header with Close Button */}
-                  <div className="flex items-center justify-between mb-2 sm:mb-3 pb-2 border-b border-gray-200">
-                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Layanan</h4>
+                  <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-gray-200">
+                    <h4 className="text-[10px] xs:text-xs sm:text-sm font-semibold text-gray-800">Filter Layanan</h4>
                     <button
                       onClick={() => setShowServiceOptions(false)}
-                      className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                      className="p-0.5 xs:p-1 hover:bg-gray-100 rounded-full transition-colors"
                       title="Tutup"
                     >
-                      <FiX size={14} className="sm:w-4 sm:h-4 text-gray-500" />
+                      <FiX size={12} className="sm:w-4 sm:h-4 text-gray-500" />
                     </button>
                   </div>
                   
                   {/* Search Box */}
-                  <div className="mb-2 relative">
-                    <FiSearch className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={12} />
+                  <div className="mb-1.5 relative">
+                    <FiSearch className="absolute left-1.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={10} />
                     <input
                       type="text"
                       value={serviceSearchQuery}
                       onChange={(e) => setServiceSearchQuery(e.target.value)}
-                      placeholder="Cari nama layanan..."
-                      className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Cari layanan..."
+                      className="w-full pl-5 xs:pl-6 pr-2 py-1 text-[10px] xs:text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                   
                   {/* Service List with Scroll */}
-                  <div className="space-y-1 max-h-32 sm:max-h-40 md:max-h-48 overflow-y-auto">
+                  <div className="space-y-0.5 max-h-32 xs:max-h-40 overflow-y-auto">
                     {availableServices
                       .filter(service => 
                         service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase())
@@ -1510,7 +1703,7 @@ const UserDashboard = () => {
                         <button
                           key={service.name}
                           onClick={() => toggleService(service.name)}
-                          className={`w-full px-1 sm:px-3 py-1 sm:py-2 text-left text-xs sm:text-xs rounded transition-colors whitespace-normal break-words leading-tight ${
+                          className={`w-full px-1.5 xs:px-2 py-1 xs:py-1.5 text-left text-[10px] xs:text-xs rounded transition-colors touch-manipulation truncate ${
                             selectedServices.includes(service.name)
                               ? 'bg-green-600 text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1522,8 +1715,8 @@ const UserDashboard = () => {
                     {availableServices.filter(service => 
                       service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase())
                     ).length === 0 && (
-                      <div className="text-xs text-gray-500 text-center py-2">
-                        Tidak ditemukan layanan "{serviceSearchQuery}"
+                      <div className="text-[10px] xs:text-xs text-gray-500 text-center py-2">
+                        Tidak ditemukan
                       </div>
                     )}
                   </div>
@@ -1541,32 +1734,32 @@ const UserDashboard = () => {
                   setShowClientOptions(false);
                   setShowServiceOptions(false);
                 }}
-                className={`group px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1 sm:gap-1.5 md:gap-2 text-xs sm:text-sm font-medium transition-all ${
+                className={`group px-1.5 xs:px-2 sm:px-3 md:px-4 py-1 xs:py-1.5 sm:py-2 rounded-full flex items-center justify-center gap-0.5 xs:gap-1 sm:gap-1.5 text-[10px] xs:text-xs sm:text-sm font-medium transition-all touch-manipulation ${
                   sortCriteria.find(c => c.id === 'responsible')
                     ? 'bg-orange-600 text-white shadow-md hover:bg-orange-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
                 }`}
               >
-                <FiUser size={12} className="sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Penanggung Jawab</span>
-                <span className="sm:hidden">👨‍💼</span>
+                <FiUser size={10} className="xs:w-3 xs:h-3 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline lg:hidden">PJ</span>
+                <span className="hidden lg:inline">Penanggung Jawab</span>
                 {sortCriteria.find(c => c.id === 'responsible') && (
                   <>
                     {sortCriteria.find(c => c.id === 'responsible')?.order === 'asc' ? (
-                      <span className="text-xs sm:text-xs">A→Z</span>
+                      <span className="text-[8px] xs:text-[10px]">A→Z</span>
                     ) : (
-                      <span className="text-xs sm:text-xs">Z→A</span>
+                      <span className="text-[8px] xs:text-[10px]">Z→A</span>
                     )}
                     <span
                       onClick={(e) => { e.stopPropagation(); removeSortCriteria('responsible'); setShowResponsibleOptions(false); }}
-                      className="ml-1 hover:bg-orange-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
+                      className="ml-0.5 hover:bg-orange-500 rounded-full p-0.5 transition-colors cursor-pointer inline-flex"
                     >
-                      <FiX size={12} className="sm:w-3 sm:h-3" />
+                      <FiX size={8} className="xs:w-2.5 xs:h-2.5 sm:w-3 sm:h-3" />
                     </span>
                   </>
                 )}
                 {selectedResponsibleParties.length > 0 && !sortCriteria.find(c => c.id === 'responsible') && (
-                  <span className="ml-1 bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                  <span className="ml-0.5 bg-orange-500 text-white text-[8px] xs:text-[10px] px-1 py-0.5 rounded-full">
                     {selectedResponsibleParties.length}
                   </span>
                 )}
@@ -1574,13 +1767,13 @@ const UserDashboard = () => {
               
               {/* Responsible Party Dropdown */}
               {showResponsibleOptions && (
-                <div className="absolute top-full left-3/4 transform -translate-x-3/4 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2 sm:p-3 md:p-4 z-50 w-48 sm:w-52 md:w-56 max-w-[calc(100vw-2rem)] max-h-[35vh] sm:max-h-[45vh] md:max-h-[55vh] overflow-auto">
+                <div className="fixed xs:absolute top-1/2 xs:top-full left-1/2 transform -translate-x-1/2 -translate-y-1/2 xs:translate-y-0 mt-0 xs:mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-3 sm:p-4 z-[60] w-[90vw] xs:w-[80vw] sm:w-52 md:w-56 max-w-sm max-h-[70vh] xs:max-h-[50vh] overflow-auto">
                   {/* Header with Close Button */}
-                  <div className="flex items-center justify-between mb-1.5 sm:mb-2 md:mb-3 pb-1.5 sm:pb-2 border-b border-gray-200">
-                    <h4 className="text-xs sm:text-sm font-semibold text-gray-800">Filter Penanggung Jawab</h4>
+                  <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-gray-200">
+                    <h4 className="text-[10px] xs:text-xs sm:text-sm font-semibold text-gray-800">Filter Penanggung Jawab</h4>
                     <button
                       onClick={() => setShowResponsibleOptions(false)}
-                      className="p-0.5 sm:p-1 hover:bg-gray-100 rounded-full transition-colors"
+                      className="p-0.5 xs:p-1 hover:bg-gray-100 rounded-full transition-colors"
                       title="Tutup"
                     >
                       <FiX size={12} className="sm:w-4 sm:h-4 text-gray-500" />
@@ -1588,20 +1781,20 @@ const UserDashboard = () => {
                   </div>
                   
                   {/* Search Box */}
-                  <div className="mb-1.5 sm:mb-2 relative">
-                    <FiSearch className="absolute left-1.5 sm:left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={10} />
+                  <div className="mb-1.5 relative">
+                    <FiSearch className="absolute left-1.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={10} />
                     <input
                       type="text"
                       value={responsibleSearchQuery}
                       onChange={(e) => setResponsibleSearchQuery(e.target.value)}
-                      placeholder="Cari nama penanggung jawab..."
-                      className="w-full pl-6 sm:pl-7 pr-2 sm:pr-3 py-1 sm:py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="Cari Penanggung Jawab..."
+                      className="w-full pl-5 xs:pl-6 pr-2 py-1 text-[10px] xs:text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                   
                   {/* Responsible Party List with Scroll */}
-                  <div className="space-y-0.5 sm:space-y-1 max-h-24 sm:max-h-32 md:max-h-40 lg:max-h-48 overflow-y-auto">
+                  <div className="space-y-0.5 max-h-32 xs:max-h-40 overflow-y-auto">
                     {globalResponsibleParties
                       .filter(party => 
                         party.name.toLowerCase().includes(responsibleSearchQuery.toLowerCase())
@@ -1610,20 +1803,20 @@ const UserDashboard = () => {
                         <button
                           key={party.id}
                           onClick={() => toggleResponsible(party.name)}
-                          className={`w-full px-1 sm:px-2 md:px-3 py-1 sm:py-1.5 md:py-2 text-left text-xs sm:text-xs md:text-sm rounded transition-colors whitespace-normal break-words leading-tight min-h-[2rem] sm:min-h-[2.5rem] flex items-center ${
+                          className={`w-full px-1.5 xs:px-2 py-1 xs:py-1.5 text-left text-[10px] xs:text-xs rounded transition-colors touch-manipulation truncate ${
                             selectedResponsibleParties.includes(party.name)
                               ? 'bg-orange-600 text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          <span className="truncate">{party.name}</span>
+                          {party.name}
                         </button>
                       ))}
                     {globalResponsibleParties.filter(party => 
                       party.name.toLowerCase().includes(responsibleSearchQuery.toLowerCase())
                     ).length === 0 && (
-                      <div className="text-xs text-gray-500 text-center py-2">
-                        Tidak ditemukan penanggung jawab "{responsibleSearchQuery}"
+                      <div className="text-[10px] xs:text-xs text-gray-500 text-center py-2">
+                        Tidak ditemukan
                       </div>
                     )}
                   </div>
@@ -1634,14 +1827,14 @@ const UserDashboard = () => {
 
           {/* Active Sort Info - CENTER ALIGNED */}
           {sortCriteria.length > 0 && (
-            <div className="text-xs sm:text-sm text-gray-600 flex items-center justify-center gap-2 pt-1 px-2 sm:px-0">
+            <div className="text-[10px] xs:text-xs sm:text-sm text-gray-600 flex items-center justify-center gap-1 xs:gap-2 pt-1">
               <span className="font-medium">Urutan:</span>
-              <div className="flex items-center gap-1 flex-wrap justify-center">
+              <div className="flex items-center gap-0.5 xs:gap-1 flex-wrap justify-center">
                 {sortCriteria.map((c, idx) => (
-                  <span key={c.id} className="inline-flex items-center gap-1">
+                  <span key={c.id} className="inline-flex items-center gap-0.5">
                     {idx > 0 && <span className="text-gray-400">→</span>}
                     <span className="font-medium text-gray-700">
-                      {c.id === 'date' && 'Tanggal'}
+                      {c.id === 'date' && 'Tgl'}
                       {c.id === 'client' && 'Klien'}
                       {c.id === 'service' && 'Layanan'}
                       {c.id === 'responsible' && 'Penanggung Jawab'}
@@ -1698,7 +1891,7 @@ const UserDashboard = () => {
         )}
       </div>
 
-      {/* Bookings View - Table or Calendar */}
+      {/* Bookings View - Table, Card, or Calendar */}
       {viewMode === 'calendar' ? (
         <CalendarView 
           bookings={sortedBookings}
@@ -1706,6 +1899,73 @@ const UserDashboard = () => {
           onDelete={handleDelete}
           onGenerateInvoice={handleGenerateInvoice}
         />
+      ) : viewMode === 'card' ? (
+        <div className="space-y-4">
+          {/* Card View Controls */}
+          <div className="bg-white rounded-lg border border-gray-200 p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <FiColumns className="w-5 h-5 text-gray-600" />
+              <span className="text-sm font-medium text-gray-700">Jumlah Kolom:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {[3, 4, 5, 6].map(cols => (
+                <button
+                  key={cols}
+                  onClick={() => setCardColumns(cols)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    cardColumns === cols
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {cols}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Search Result Info for Card View */}
+          {searchQuery && (
+            <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="text-sm text-blue-800">
+                  <span className="font-medium">Hasil pencarian:</span>{' '}
+                  <span className="font-semibold">"{searchQuery}"</span>
+                  {' '}— Ditemukan <span className="font-bold">{sortedBookings.length}</span> booking
+                </div>
+              </div>
+              <button
+                onClick={() => setSearchQuery('')}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
+              >
+                Hapus pencarian
+              </button>
+            </div>
+          )}
+
+          {/* Card Grid */}
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+          ) : (
+            <BookingCardView
+              bookings={sortedBookings}
+              cardColumns={cardColumns}
+              searchQuery={searchQuery}
+              highlightText={highlightText}
+              globalResponsibleParties={globalResponsibleParties}
+              serviceResponsibleParties={serviceResponsibleParties}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onGenerateInvoice={handleGenerateInvoice}
+              pagination={pagination}
+              onPageChange={(page) => setPagination(prev => ({ ...prev, currentPage: page }))}
+              selectedStatuses={selectedStatuses}
+              selectedPaymentStatuses={selectedPaymentStatuses}
+            />
+          )}
+        </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
           {/* Search Result Info */}
@@ -1728,10 +1988,13 @@ const UserDashboard = () => {
           )}
           
           <div className="overflow-x-auto -mx-2 sm:mx-0 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-            <div className="inline-block w-full align-middle">
-              <table className="w-full text-xs" style={{ minWidth: '700px' }}>
-              <thead className="bg-gray-50 border-b border-gray-200">
+            <div className="inline-block min-w-full align-middle">
+              <table className="min-w-full text-xs divide-y divide-gray-200">
+              <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nama Booking
+                  </th>
                   <th className="px-1.5 sm:px-2 py-1.5 sm:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Klien
                   </th>
@@ -1758,7 +2021,7 @@ const UserDashboard = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-2 sm:px-4 py-3 sm:py-4 text-center text-gray-500">
+                  <td colSpan="8" className="px-2 sm:px-4 py-3 sm:py-4 text-center text-gray-500">
                     <div className="flex justify-center items-center">
                       <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-blue-600"></div>
                     </div>
@@ -1766,7 +2029,7 @@ const UserDashboard = () => {
                 </tr>
               ) : sortedBookings.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-2 sm:px-4 py-3 sm:py-4 text-center text-gray-500">
+                  <td colSpan="8" className="px-2 sm:px-4 py-3 sm:py-4 text-center text-gray-500">
                     {searchQuery ? (
                       <div className="flex flex-col items-center gap-1">
                         <p className="font-medium text-xs sm:text-sm">Tidak ada hasil untuk "{searchQuery}"</p>
@@ -1782,6 +2045,13 @@ const UserDashboard = () => {
               ) : (
                 sortedBookings.map((booking) => (
                   <tr key={booking.id} className="hover:bg-gray-50">
+                    <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
+                      <div>
+                        <div className={`text-xs font-medium ${booking.booking_name ? 'text-gray-900' : 'text-gray-400 italic'}`}>
+                          {searchQuery ? highlightText(booking.booking_name || 'Belum diberi nama', searchQuery) : (booking.booking_name || 'Belum diberi nama')}
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
                       <div>
                         <div className="text-xs font-medium text-gray-900">
@@ -1895,9 +2165,13 @@ const UserDashboard = () => {
                       </div>
                     </td>
                     <td className="px-1.5 sm:px-2 py-1.5 sm:py-2">
-                      <div className="text-xs text-gray-900">{format.date(booking.booking_date)}</div>
+                      <div className="text-xs text-gray-900">
+                        {dateFnsFormat(new Date(booking.booking_date), 'dd MMM yyyy', { locale: id })}
+                        {booking.booking_date_end && booking.booking_date_end !== booking.booking_date && ` - ${dateFnsFormat(new Date(booking.booking_date_end), 'dd MMM yyyy', { locale: id })}`}
+                      </div>
                       <div className="text-xs text-gray-500">
                         {booking.booking_time ? booking.booking_time.substring(0, 5) : '-'}
+                        {booking.booking_time_end && ` - ${booking.booking_time_end.substring(0, 5)}`}
                       </div>
                       {booking.location_name && booking.location_name !== '' && (
                         <div className="flex items-center gap-1 mt-0.5">
@@ -2068,6 +2342,104 @@ const UserDashboard = () => {
         onClose={() => setShowNoPinModal(false)}
         message="Anda harus membuat PIN terlebih dahulu untuk menghapus data booking"
       />
+
+      <GoogleCalendar
+        isOpen={showGoogleCalendar}
+        onClose={() => setShowGoogleCalendar(false)}
+      />
+
+      {/* Client Booking Link Modal */}
+      <Modal
+        isOpen={showLinkModal}
+        onClose={() => setShowLinkModal(false)}
+        title="Link Booking untuk Klien"
+        size="md"
+      >
+        <div className="space-y-6">
+          <p className="text-gray-600 text-sm">
+            Bagikan link atau QR Code ini ke klien Anda agar mereka bisa mengirimkan booking langsung.
+          </p>
+
+          {/* QR Code */}
+          <div className="flex justify-center p-6 bg-white border-2 border-dashed border-gray-200 rounded-xl">
+            <QRCodeSVG 
+              value={bookingLink} 
+              size={180}
+              level="H"
+              includeMargin={true}
+            />
+          </div>
+
+          {/* Booking Code Display */}
+          {bookingLinkData && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center justify-center gap-2 text-sm">
+                <span className="text-gray-600 font-medium">Kode Booking:</span>
+                <span className="font-mono text-blue-600 font-semibold">
+                  {bookingLinkData.booking_code}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Link */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Link Booking</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={bookingLink}
+                readOnly
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
+              />
+              <Button
+                variant={linkCopied ? 'success' : 'outline'}
+                icon={linkCopied ? <FiCheck /> : <FiCopy />}
+                onClick={copyBookingLink}
+              >
+                {linkCopied ? 'Disalin!' : 'Salin'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Share Buttons */}
+          <div className="flex flex-wrap justify-center gap-3">
+            <a
+              href={`https://wa.me/?text=Silakan booking melalui link berikut: ${encodeURIComponent(bookingLink)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2 text-sm"
+            >
+              <FiShare2 size={16} />
+              Share via WhatsApp
+            </a>
+            <Button
+              variant="outline"
+              onClick={() => window.open(bookingLink, '_blank')}
+            >
+              Preview Link
+            </Button>
+          </div>
+
+          {/* Regenerate Button */}
+          {bookingLinkData && (
+            <div className="border-t pt-4">
+              <Button
+                variant="outline"
+                icon={<FiRefreshCw className={loadingBookingLink ? 'animate-spin' : ''} />}
+                onClick={regenerateBookingCode}
+                disabled={loadingBookingLink}
+                className="w-full"
+              >
+                {loadingBookingLink ? 'Membuat Link Baru...' : 'Buat Link Baru'}
+              </Button>
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                💡 Link lama akan tidak bisa digunakan jika Anda membuat link baru
+              </p>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };

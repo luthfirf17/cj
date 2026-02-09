@@ -239,7 +239,8 @@ const FinancialPage = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await api.get('/user/dashboard/stats');
+      // Fetch stats dengan filter bulan dan tahun agar sinkron dengan financial summary
+      const response = await api.get(`/user/dashboard/stats?month=${filterMonth}&year=${filterYear}`);
       if (response.data.success) {
         setStats(response.data.data);
       }

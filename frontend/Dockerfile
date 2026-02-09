@@ -1,5 +1,5 @@
 # Frontend Dockerfile - Multi-stage build
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
 
 # Set working directory
 WORKDIR /app
@@ -13,6 +13,11 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Set environment variable for build
+ARG VITE_API_URL=https://catatjasamu.com/api
+ARG NGINX_CONF=nginx.conf
+ENV VITE_API_URL=$VITE_API_URL
+
 # Build the application
 RUN npm run build
 
@@ -20,7 +25,8 @@ RUN npm run build
 FROM nginx:alpine
 
 # Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ARG NGINX_CONF=nginx.conf
+COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf
 
 # Copy built application from build stage
 COPY --from=build /app/dist /usr/share/nginx/html

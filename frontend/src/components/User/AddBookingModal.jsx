@@ -5,18 +5,22 @@ import Input from '../Common/Input';
 import Select from '../Common/Select';
 import TextArea from '../Common/TextArea';
 import CountryCodeDropdown from '../Common/CountryCodeDropdown';
-import { FiUser, FiPhone, FiMapPin, FiDollarSign, FiPercent, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMessageCircle } from 'react-icons/fi';
+import { FiUser, FiPhone, FiMapPin, FiDollarSign, FiPercent, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMessageCircle, FiCalendar } from 'react-icons/fi';
 import { formatPhoneForWhatsApp } from '../../utils/phoneUtils';
 import api from '../../services/api';
+import authService from '../../services/authService';
 
 const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState([]);
   const [clients, setClients] = useState([]);
   const [responsibleParties, setResponsibleParties] = useState([]);
+  const [bookingNames, setBookingNames] = useState([]);
 
     // Form State
   const [formData, setFormData] = useState({
+    // Booking Name (Optional)
+    booking_name: '',
     // Client Data
     client_id: '',
     client_name: '',
@@ -58,6 +62,9 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
   
   // Multiple Services Selection State
   const [multipleSelectedServices, setMultipleSelectedServices] = useState([]);
+  
+  // Booking Name Dropdown State
+  const [showBookingNameDropdown, setShowBookingNameDropdown] = useState(false);
   
   // Client Dropdown State
   const [clientSearch, setClientSearch] = useState('');
@@ -109,8 +116,14 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
   const [errors, setErrors] = useState({});
   const [isNewClient, setIsNewClient] = useState(true);
   
+  // Google Calendar Sync State
+  const [syncToGoogleCalendar, setSyncToGoogleCalendar] = useState(false);
+  const [isGoogleCalendarConnected, setIsGoogleCalendarConnected] = useState(false);
+  const [isCheckingGoogleCalendar, setIsCheckingGoogleCalendar] = useState(false);
+  
   const dropdownRefs = useRef([]);
   const serviceResponsiblePartyDropdownRefs = useRef([]);
+  const bookingNameDropdownRef = useRef(null);
   const clientDropdownRef = useRef(null);
   const responsiblePartyDropdownRef = useRef(null);
 
@@ -118,12 +131,38 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
   const [subtotalAmount, setSubtotalAmount] = useState(0);
   const [originalSubtotal, setOriginalSubtotal] = useState(0); // Before discount
 
+  // Check Google Calendar connection
+  const checkGoogleCalendarConnection = async () => {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user || user.auth_provider !== 'google') {
+        setIsGoogleCalendarConnected(false);
+        return;
+      }
+      
+      setIsCheckingGoogleCalendar(true);
+      const response = await api.get('/user/google-calendar/status');
+      if (response.data.success && response.data.data.connected) {
+        setIsGoogleCalendarConnected(true);
+      } else {
+        setIsGoogleCalendarConnected(false);
+      }
+    } catch (err) {
+      console.log('Google Calendar not connected:', err);
+      setIsGoogleCalendarConnected(false);
+    } finally {
+      setIsCheckingGoogleCalendar(false);
+    }
+  };
+
   // Fetch services and clients
   useEffect(() => {
     if (isOpen) {
       fetchServices();
+      checkGoogleCalendarConnection();
       fetchClients();
       fetchResponsibleParties();
+      fetchBookingNames();
     }
   }, [isOpen]);
 
@@ -173,6 +212,16 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
+  const fetchBookingNames = async () => {
+    try {
+      const response = await api.get('/booking-names');
+      setBookingNames(response.data || []);
+    } catch (error) {
+      console.error('Error fetching booking names:', error);
+      setBookingNames([]);
+    }
+  };
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -196,6 +245,13 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
         setActiveServiceResponsiblePartyDropdownIndex(null);
       }
       
+      // Close booking name dropdown
+      if (showBookingNameDropdown && 
+          bookingNameDropdownRef.current && 
+          !bookingNameDropdownRef.current.contains(event.target)) {
+        setShowBookingNameDropdown(false);
+      }
+      
       // Close client dropdown
       if (showClientDropdown && 
           clientDropdownRef.current && 
@@ -213,7 +269,7 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [activeDropdownIndex, activeServiceResponsiblePartyDropdownIndex, showServiceDropdown, showServiceResponsiblePartyDropdown, showClientDropdown, showResponsiblePartyDropdown]);
+  }, [activeDropdownIndex, activeServiceResponsiblePartyDropdownIndex, showServiceDropdown, showServiceResponsiblePartyDropdown, showBookingNameDropdown, showClientDropdown, showResponsiblePartyDropdown]);
 
   // Calculate booking days from date range
   useEffect(() => {
@@ -538,7 +594,7 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
       }
     } catch (error) {
       console.error('Error deleting client:', error);
-      alert('Gagal menghapus klien. Silakan coba lagi.');
+      alert(error.response?.data?.message || 'Gagal menghapus klien. Silakan coba lagi.');
     }
   };
 
@@ -634,6 +690,29 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
+  // Handle booking name selection
+  const handleBookingNameSelect = (bookingName) => {
+    setFormData(prev => ({ ...prev, booking_name: bookingName.name }));
+    setShowBookingNameDropdown(false);
+  };
+
+  // Handle delete booking name
+  const handleDeleteBookingName = async (bookingNameId) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus nama booking ini?')) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/booking-names/${bookingNameId}`);
+      alert('Nama booking berhasil dihapus!');
+      fetchBookingNames(); // Refresh list
+      setShowBookingNameDropdown(false);
+    } catch (error) {
+      console.error('Error deleting booking name:', error);
+      alert('Gagal menghapus nama booking. Silakan coba lagi.');
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -717,6 +796,75 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Function to sync booking to Google Calendar
+  const syncBookingToGoogleCalendar = async (bookingData) => {
+    try {
+      // Get service names for event title
+      const serviceNames = formData.selected_services
+        .filter(s => s.service_id)
+        .map(s => services.find(srv => srv.id === parseInt(s.service_id))?.name || '')
+        .filter(name => name)
+        .join(', ');
+      
+      const clientName = isNewClient ? formData.client_name : 
+        clients.find(c => c.id === parseInt(formData.client_id))?.name || formData.client_name;
+      
+      const bookingName = formData.booking_name || '';
+      const locationName = formData.location_name || '';
+      
+      // Build event title with format: "Booking Name: Client Name - Location Name"
+      // If no booking name: "Client Name - Location Name"
+      let eventTitle;
+      if (bookingName) {
+        eventTitle = `${bookingName}: ${clientName}${locationName ? ' - ' + locationName : ''}`;
+      } else {
+        eventTitle = `${clientName}${locationName ? ' - ' + locationName : ''}`;
+      }
+      
+      // Build event description
+      let description = `🎯 Booking CatatJasamu\n\n`;
+      description += `👤 Klien: ${clientName}\n`;
+      if (formData.contact) description += `📱 Kontak: ${formData.contact}\n`;
+      if (formData.location_name) description += `📍 Lokasi: ${formData.location_name}\n`;
+      if (formData.location_map_url) description += `🗺️ Map: ${formData.location_map_url}\n`;
+      description += `\n💰 Total: Rp ${formData.total_amount.toLocaleString('id-ID')}\n`;
+      description += `💳 Status Pembayaran: ${formData.payment_status}\n`;
+      if (formData.notes) description += `\n📝 Catatan: ${formData.notes}`;
+      
+      // CRITICAL FIX: Format dates WITHOUT timezone conversion
+      // Build RFC3339 format directly to prevent timezone shift
+      const startDate = formData.booking_date;
+      const startTime = formData.booking_time || '09:00';
+      const endDate = formData.booking_date_end || formData.booking_date;
+      const endTime = formData.booking_time_end || '17:00';
+      
+      const startDateTime = `${startDate}T${startTime}:00+07:00`;
+      const endDateTime = `${endDate}T${endTime}:00+07:00`;
+      
+      const eventData = {
+        summary: eventTitle,
+        description: description,
+        startDateTime: startDateTime,
+        endDateTime: endDateTime,
+        location: formData.location_name || '',
+        timeZone: 'Asia/Jakarta'
+      };
+      
+      const response = await api.post('/user/google-calendar/events', eventData);
+      
+      if (response.data.success) {
+        console.log('✅ Booking synced to Google Calendar:', response.data.data);
+        return response.data.data;
+      } else {
+        console.error('Failed to sync to Google Calendar:', response.data.message);
+        return null;
+      }
+    } catch (err) {
+      console.error('Error syncing to Google Calendar:', err);
+      return null;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -750,10 +898,13 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
         payment_status: formData.payment_status,
         amount_paid: formData.amount_paid,
         responsible_parties: formData.responsible_parties, // Add responsible parties
+        google_calendar_synced: syncToGoogleCalendar, // Track if synced
       };
       
+      // SECURITY FIX: Removed hardcoded user_id - backend will use req.user.id from JWT
       const bookingData = {
-        user_id: 2,
+        // user_id removed - enforced by authenticate middleware on backend
+        booking_name: formData.booking_name || null,
         client_id: isNewClient ? null : formData.client_id,
         client_name: isNewClient ? formData.client_name : null,
         contact: isNewClient ? formData.contact : null,
@@ -773,7 +924,36 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
       const response = await api.post('/user/bookings', bookingData);
 
       if (response.data.success) {
-        alert('Booking berhasil ditambahkan!');
+        // Auto-save booking name if it doesn't exist in database
+        if (formData.booking_name && formData.booking_name.trim() !== '') {
+          const trimmedName = formData.booking_name.trim();
+          const existingBookingName = bookingNames.find(bn => 
+            bn.name.toLowerCase() === trimmedName.toLowerCase()
+          );
+          
+          if (!existingBookingName) {
+            try {
+              await api.post('/booking-names', { name: trimmedName });
+              // Refresh booking names list
+              fetchBookingNames();
+            } catch (error) {
+              console.error('Error auto-saving booking name:', error);
+              // Don't block the booking creation if saving booking name fails
+            }
+          }
+        }
+        
+        // Sync to Google Calendar if enabled
+        if (syncToGoogleCalendar && isGoogleCalendarConnected) {
+          const calendarEvent = await syncBookingToGoogleCalendar(bookingData);
+          if (calendarEvent) {
+            alert('Booking berhasil ditambahkan dan disinkronkan ke Google Calendar!');
+          } else {
+            alert('Booking berhasil ditambahkan, tapi gagal sinkron ke Google Calendar.');
+          }
+        } else {
+          alert('Booking berhasil ditambahkan!');
+        }
         onSuccess();
         resetForm();
       } else {
@@ -789,6 +969,7 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
 
   const resetForm = () => {
     setFormData({
+      booking_name: '',
       client_id: '',
       client_name: '',
       contact: '',
@@ -821,6 +1002,7 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
     setShowServiceResponsiblePartyDropdown([false]);
     setActiveDropdownIndex(null);
     setActiveServiceResponsiblePartyDropdownIndex(null);
+    setSyncToGoogleCalendar(false);
   };
 
   const handleClose = () => {
@@ -847,6 +1029,111 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Booking Name (Optional) */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Nama Booking (Opsional)</h3>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nama Booking
+            </label>
+            
+            {/* Combined Input and Dropdown for Booking Name */}
+            <div className="relative" ref={bookingNameDropdownRef}>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={formData.booking_name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, booking_name: e.target.value }))}
+                  placeholder="Ketik nama booking baru atau pilih dari daftar tersimpan"
+                  className="pr-10"
+                  onFocus={() => setShowBookingNameDropdown(true)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowBookingNameDropdown(!showBookingNameDropdown)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Dropdown Menu */}
+              {showBookingNameDropdown && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowBookingNameDropdown(false)}
+                  />
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {/* Search/Input Field */}
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="relative">
+                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <input
+                          type="text"
+                          value={formData.booking_name}
+                          onChange={(e) => setFormData(prev => ({ ...prev, booking_name: e.target.value }))}
+                          placeholder="Cari nama booking tersimpan..."
+                          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Booking Name List - Show only if there are saved names */}
+                    {bookingNames.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto">
+                        <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50">
+                          Nama Booking Tersimpan
+                        </div>
+                        {bookingNames.filter(bn => 
+                          bn.name.toLowerCase().includes(formData.booking_name.toLowerCase())
+                        ).slice(0, 4).map(bookingName => (
+                          <div
+                            key={bookingName.id}
+                            className="hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex items-center gap-2 px-3 py-2">
+                              {/* Booking Name - Clickable */}
+                              <button
+                                type="button"
+                                onClick={() => handleBookingNameSelect(bookingName)}
+                                className="flex-1 flex items-center gap-2 text-left"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {bookingName.name}
+                                  </p>
+                                </div>
+                              </button>
+
+                              {/* Delete Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteBookingName(bookingName.id);
+                                }}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Hapus nama booking"
+                              >
+                                <FiTrash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Client Information */}
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Informasi Klien</h3>
@@ -2293,6 +2580,51 @@ const AddBookingModal = ({ isOpen, onClose, onSuccess }) => {
             placeholder="Tambahkan catatan tambahan (opsional)"
             rows={3}
           />
+        </div>
+
+        {/* Google Calendar Sync */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isGoogleCalendarConnected ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                <FiCalendar className={`w-5 h-5 ${isGoogleCalendarConnected ? 'text-blue-600' : 'text-gray-400'}`} />
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900">Sinkronkan ke Google Calendar</h4>
+                <p className="text-sm text-gray-500">
+                  {isCheckingGoogleCalendar ? (
+                    'Memeriksa koneksi...'
+                  ) : isGoogleCalendarConnected ? (
+                    'Buat event booking di Google Calendar Anda'
+                  ) : (
+                    'Hubungkan Google Calendar terlebih dahulu'
+                  )}
+                </p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={syncToGoogleCalendar}
+                onChange={(e) => setSyncToGoogleCalendar(e.target.checked)}
+                disabled={!isGoogleCalendarConnected || isCheckingGoogleCalendar}
+                className="sr-only peer"
+              />
+              <div className={`w-11 h-6 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 
+                ${isGoogleCalendarConnected ? 'bg-gray-200 peer-checked:bg-blue-600' : 'bg-gray-300 cursor-not-allowed'}
+                after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 
+                after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full`}>
+              </div>
+            </label>
+          </div>
+          {syncToGoogleCalendar && isGoogleCalendarConnected && (
+            <div className="mt-3 pt-3 border-t border-blue-200">
+              <p className="text-xs text-blue-700 flex items-center gap-1">
+                <FiCheck className="w-3 h-3" />
+                Event akan dibuat di Google Calendar setelah booking disimpan
+              </p>
+            </div>
+          )}
         </div>
       </form>
       </Modal>

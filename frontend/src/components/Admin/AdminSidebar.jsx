@@ -53,7 +53,7 @@ const AdminSidebar = ({ isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollaps
       {/* Mobile Overlay */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setIsMobileOpen(false)}
         ></div>
       )}
@@ -61,21 +61,16 @@ const AdminSidebar = ({ isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollaps
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-20 left-0 z-20 h-[calc(100vh-5rem)] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-r border-cyan-500/20
-          transform transition-all duration-300 ease-in-out shadow-2xl backdrop-blur-xl overflow-hidden
+          fixed top-20 left-0 z-20 h-[calc(100vh-5rem)] bg-slate-900 border-r border-cyan-500/20
+          transform transition-transform duration-200 ease-in-out shadow-xl overflow-hidden
           ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
           ${isCollapsed ? 'lg:w-20' : 'lg:w-64'}
           w-64
         `}
       >
-        {/* Animated Background Grid */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.1)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
-        </div>
-
         {/* Glowing Border Effect */}
-        <div className="absolute top-0 bottom-0 right-0 w-px bg-gradient-to-b from-transparent via-cyan-400 to-transparent opacity-50"></div>
+        <div className="absolute top-0 bottom-0 right-0 w-px bg-cyan-400/30"></div>
 
         {/* Header */}
         <div className={`flex items-center justify-between h-20 px-6 border-b border-slate-700/30 relative ${isCollapsed ? 'lg:justify-center' : ''}`}>
@@ -124,9 +119,9 @@ const AdminSidebar = ({ isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollaps
           <div className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path;
-              const baseClasses = "group relative flex items-center px-4 py-3 rounded-xl transition-all duration-300 overflow-hidden";
+              const baseClasses = "group relative flex items-center px-4 py-3 rounded-xl transition-all duration-200 overflow-hidden";
               const activeClasses = isActive
-                ? "bg-gradient-to-r from-cyan-500/20 to-cyan-600/20 text-cyan-300 border border-cyan-500/30 shadow-lg shadow-cyan-500/10"
+                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-md"
                 : "text-slate-400 hover:text-cyan-300 hover:bg-slate-800/50 border border-transparent hover:border-cyan-500/20";
               const collapsedClasses = isCollapsed ? "lg:justify-center lg:px-3" : "";
 
@@ -144,9 +139,7 @@ const AdminSidebar = ({ isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollaps
 
                   {/* Icon */}
                   <div className={`relative flex items-center justify-center ${isCollapsed ? 'w-8 h-8' : 'w-8 h-8 mr-3'}`}>
-                    <item.icon size={isCollapsed ? 18 : 20} className={`transition-all duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />
-                    {/* Icon Glow Effect */}
-                    <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-cyan-500/20 to-cyan-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
+                    <item.icon size={isCollapsed ? 18 : 20} className={`transition-all duration-200 ${isActive ? 'scale-105' : 'group-hover:scale-105'}`} />
                   </div>
 
                   {/* Label */}

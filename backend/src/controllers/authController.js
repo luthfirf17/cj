@@ -94,7 +94,7 @@ const login = async (req, res) => {
   const client = await pool.connect();
   
   try {
-    const { email, password } = req.body;
+    const { email, password, remember_me } = req.body;
 
     // Validation
     if (!email || !password) {
@@ -131,7 +131,7 @@ const login = async (req, res) => {
     }
 
     // Generate token
-    const token = generateToken(user);
+    const token = generateToken(user, remember_me === true);
 
     // Update last login
     await client.query(

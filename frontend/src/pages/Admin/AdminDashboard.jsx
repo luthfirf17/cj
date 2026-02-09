@@ -38,12 +38,9 @@ const AdminDashboard = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-cyan-500/20 border-t-cyan-400 shadow-lg shadow-cyan-500/20"></div>
-          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-500/10 to-blue-500/10 animate-pulse"></div>
-        </div>
-        <div className="ml-4 text-cyan-300 font-mono text-lg animate-pulse">
-          LOADING SYSTEM DATA...
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-cyan-500 border-t-transparent"></div>
+        <div className="ml-4 text-cyan-300 font-mono text-lg">
+          Loading...
         </div>
       </div>
     );
@@ -123,11 +120,7 @@ const AdminDashboard = () => {
   ];
 
   return (
-    <div className="space-y-8 relative">
-      {/* Animated Background Grid */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.1)_1px,transparent_1px)] bg-[size:30px_30px] animate-pulse"></div>
-      </div>
+    <div className="space-y-6 relative">
 
       {/* Header */}
       <div className="relative">
@@ -147,11 +140,11 @@ const AdminDashboard = () => {
         {statCards.map((stat, index) => (
           <div
             key={stat.name}
-            className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-900/80 via-slate-800/80 to-slate-900/80 border border-slate-700/50 hover:border-cyan-500/50 backdrop-blur-xl shadow-2xl hover:shadow-cyan-500/20 transition-all duration-500 hover:scale-105 hover:-translate-y-1"
-            style={{ animationDelay: `${index * 100}ms` }}
+            className="group relative overflow-hidden rounded-xl bg-slate-800/80 border border-slate-700/50 hover:border-cyan-500/50 shadow-lg hover:shadow-cyan-500/10 transition-all duration-200 hover:scale-[1.02]"
+            style={{ animationDelay: `${index * 50}ms` }}
           >
             {/* Animated Border Glow */}
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="absolute inset-0 rounded-xl bg-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
 
             {/* Terminal Code Label */}
             <div className="absolute top-3 right-3 text-xs font-mono text-slate-500 group-hover:text-cyan-400 transition-colors duration-300">
@@ -162,9 +155,8 @@ const AdminDashboard = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   {/* Icon with Glow */}
-                  <div className={`relative p-3 rounded-lg bg-gradient-to-br ${stat.color} shadow-lg ${stat.glowColor} group-hover:scale-110 transition-all duration-300`}>
-                    <stat.icon className="h-8 w-8 text-white" />
-                    <div className="absolute inset-0 rounded-lg bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className={`relative p-2 rounded-lg bg-gradient-to-br ${stat.color} shadow-md ${stat.glowColor} group-hover:scale-105 transition-all duration-200`}>
+                    <stat.icon className="h-6 w-6 text-white" />
                   </div>
 
                   <div>
@@ -241,7 +233,7 @@ const AdminDashboard = () => {
             <tbody className="bg-gradient-to-br from-slate-900/20 to-slate-800/20 divide-y divide-slate-700/30">
               {stats?.recentUsers?.length > 0 ? (
                 stats.recentUsers.map((user, index) => (
-                  <tr key={user.id} className="hover:bg-gradient-to-r hover:from-cyan-500/5 hover:to-blue-500/5 transition-all duration-300 group">
+                  <tr key={user.id} className="hover:bg-slate-800/30 transition-colors duration-150">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="relative">

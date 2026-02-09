@@ -13,7 +13,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data_dev:/var/lib/postgresql/data
+      - catatjasamu_proper_shared_data:/var/lib/postgresql/data
       - ../backend/src/migrations:/docker-entrypoint-initdb.d
     networks:
       - catatjasamu-network
@@ -41,6 +41,10 @@ services:
       JWT_SECRET: catat-jasamu-secret-key-2025
       JWT_EXPIRE: 7d
       FRONTEND_URL: http://localhost:3000
+      BACKEND_URL: http://localhost:5001
+      GOOGLE_CALLBACK_URL: http://localhost:5001/api/auth/google/callback
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-your_google_client_id_here}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-your_google_client_secret_here}
     ports:
       - "5001:5001"
     volumes:
@@ -61,7 +65,7 @@ services:
     container_name: catatjasamu-frontend-dev
     restart: unless-stopped
     environment:
-      - VITE_API_BASE_URL=http://localhost:5001/api
+      - VITE_API_URL=http://localhost:5001
     ports:
       - "3000:3000"
     depends_on:
@@ -78,5 +82,5 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data_dev:
+  catatjasamu_proper_shared_data:
     driver: local

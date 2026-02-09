@@ -7,11 +7,11 @@ services:
     environment:
       POSTGRES_DB: catat_jasamu_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - catatjasamu_proper_shared_data:/var/lib/postgresql/data
       - ../backend/src/migrations:/docker-entrypoint-initdb.d
     networks:
       - catatjasamu-network
@@ -35,10 +35,17 @@ services:
       DB_PORT: 5432
       DB_NAME: catat_jasamu_db
       DB_USER: postgres
-      DB_PASSWORD: 1234
-      JWT_SECRET: catat-jasamu-secret-key-2025
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRE: 7d
-      FRONTEND_URL: https://catatjasamu.com
+      FRONTEND_URL: ${FRONTEND_URL}
+      BACKEND_URL: ${BACKEND_URL}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALENDAR_CLIENT_ID: ${GOOGLE_CALENDAR_CLIENT_ID}
+      GOOGLE_CALENDAR_CLIENT_SECRET: ${GOOGLE_CALENDAR_CLIENT_SECRET}
+      GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI}
     ports:
       - "5001:5001"
     depends_on:
@@ -55,12 +62,15 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        NGINX_CONF: nginx.dev.conf
     container_name: catatjasamu-frontend
     restart: unless-stopped
     environment:
-      VITE_API_URL: https://catatjasamu.com/api
+      VITE_API_URL: ${VITE_API_URL}
     ports:
-      - "3000:80"
+      - "80:80"
     depends_on:
       - backend
     networks:
@@ -73,5 +83,5 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
+  catatjasamu_proper_shared_data:
     driver: local

@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { FiChevronLeft, FiChevronRight, FiX, FiClock, FiUser, FiMapPin, FiEdit, FiTrash2, FiFileText, FiMessageCircle } from 'react-icons/fi';
+import { format as dateFnsFormat } from 'date-fns';
+import { id } from 'date-fns/locale';
 import Badge from './Common/Badge';
 import { format } from '../utils/format';
 import { getWhatsAppLink } from '../utils/phoneUtils';
@@ -15,6 +17,12 @@ const CalendarView = ({ bookings, onDateClick, onEdit, onDelete, onGenerateInvoi
 
   const monthDropdownRef = useRef(null);
   const yearDropdownRef = useRef(null);
+
+  // Format date with short month name (3 letters)
+  const formatDateShort = (date) => {
+    if (!date) return '-'
+    return dateFnsFormat(new Date(date), 'dd MMM yyyy', { locale: id })
+  }
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -529,7 +537,7 @@ const CalendarView = ({ bookings, onDateClick, onEdit, onDelete, onGenerateInvoi
                           {/* Waktu & Lokasi */}
                           <td className="px-1 sm:px-4 py-1 sm:py-3">
                             <div className="text-[11px] sm:text-sm text-gray-900">
-                              {format.date(booking.booking_date)}
+                              {formatDateShort(booking.booking_date)}
                             </div>
                             <div className="text-[11px] text-gray-500">
                               {booking.booking_time ? booking.booking_time.substring(0, 5) : '-'}

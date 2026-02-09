@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const googleCalendarController = require('../controllers/googleCalendarController');
 const { authenticate } = require('../middlewares/authMiddleware');
 
 /**
@@ -58,5 +59,23 @@ router.post('/verify-email-pin', authController.verifyEmailAndPin);
  * @access  Public
  */
 router.post('/reset-password-with-email-pin', authController.resetPasswordWithEmailPin);
+
+/**
+ * GOOGLE CALENDAR ROUTES
+ */
+
+/**
+ * @route   GET /api/auth/google/calendar/auth-url
+ * @desc    Get Google Calendar authorization URL
+ * @access  Private
+ */
+router.get('/google/calendar/auth-url', authenticate, googleCalendarController.getCalendarAuthUrl);
+
+/**
+ * @route   GET /api/auth/google/calendar/callback
+ * @desc    Handle Google Calendar OAuth callback
+ * @access  Public
+ */
+router.get('/google/calendar/callback', googleCalendarController.handleCalendarCallback);
 
 module.exports = router;

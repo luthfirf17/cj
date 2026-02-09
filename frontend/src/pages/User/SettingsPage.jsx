@@ -18,6 +18,9 @@ const SettingsPage = () => {
     username: '',
   });
 
+  // Auth provider (google, local, etc.)
+  const [authProvider, setAuthProvider] = useState('');
+
   // Password Change Data
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -56,6 +59,7 @@ const SettingsPage = () => {
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
 
   useEffect(() => {
+    console.log('🔄 SettingsPage mounted, fetching user profile...');
     fetchUserProfile();
     checkPinStatus();
   }, []);
@@ -67,11 +71,16 @@ const SettingsPage = () => {
       
       if (response.data.success) {
         const user = response.data.data;
+        console.log('🔍 User profile data:', user); // Debug log
+        console.log('🔍 Auth provider from API:', user.auth_provider); // Debug log
+        
         setProfileData({
           name: user.name || '',
           email: user.email || '',
           username: user.username || '',
         });
+        setAuthProvider(user.auth_provider || 'local'); // Default to 'local' if not set
+        console.log('✅ Auth provider set to:', user.auth_provider || 'local'); // Debug log
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -159,13 +168,21 @@ const SettingsPage = () => {
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     
-    if (!profileData.name.trim()) {
+    // Validate name only for non-Google OAuth users
+    if (authProvider !== 'google' && !profileData.name.trim()) {
       alert('Nama tidak boleh kosong!');
       return;
     }
 
-    if (!profileData.email.trim()) {
+    // Validate email only for non-Google OAuth users
+    if (authProvider !== 'google' && !profileData.email.trim()) {
       alert('Email tidak boleh kosong!');
+      return;
+    }
+
+    // Prevent email change for Google OAuth users
+    if (authProvider === 'google') {
+      alert('Email dan nama tidak dapat diubah karena menggunakan akun Google OAuth. Kelola informasi Anda melalui pengaturan akun Google.');
       return;
     }
 
@@ -178,10 +195,21 @@ const SettingsPage = () => {
 
     try {
       setLoadingProfile(true);
-      const response = await api.put('/user/profile', {
-        name: profileData.name,
-        email: profileData.email,
-      });
+      
+      // Prepare payload based on auth provider
+      const payload = {};
+      
+      // Only include name for non-Google OAuth users
+      if (authProvider !== 'google') {
+        payload.name = profileData.name;
+      }
+      
+      // Only include email for non-Google OAuth users
+      if (authProvider !== 'google') {
+        payload.email = profileData.email;
+      }
+      
+      const response = await api.put('/user/profile', payload);
 
       if (response.data.success) {
         alert('Profil berhasil diperbarui!');
@@ -191,7 +219,7 @@ const SettingsPage = () => {
         console.log('📦 Current user from localStorage:', currentUser);
         
         if (currentUser) {
-          currentUser.full_name = profileData.name;
+          currentUser.name = profileData.name;
           currentUser.email = profileData.email;
           localStorage.setItem('user_data', JSON.stringify(currentUser));
           
@@ -328,7 +356,8 @@ const SettingsPage = () => {
       return;
     }
 
-    if (!pinData.currentPassword) {
+    // Only require current password for non-Google OAuth users
+    if (authProvider !== 'google' && !pinData.currentPassword) {
       alert('Password saat ini diperlukan untuk keamanan!');
       return;
     }
@@ -343,6 +372,11 @@ const SettingsPage = () => {
       // Add current PIN verification if user already has PIN
       if (hasPin) {
         payload.currentPin = pinData.currentPin;
+      }
+
+      // Remove currentPassword for Google OAuth users
+      if (authProvider === 'google') {
+        delete payload.currentPassword;
       }
 
       const response = await api.post('/user/set-pin', payload);
@@ -418,6 +452,23 @@ const SettingsPage = () => {
           </div>
 
           <form onSubmit={handleUpdateProfile} className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+            {/* Google OAuth Info */}
+            {authProvider === 'google' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <FiMail className="text-white w-3 h-3 sm:w-4 sm:h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-blue-900">Akun Google OAuth</p>
+                    <p className="text-xs text-blue-700 mt-0.5 sm:mt-1">
+                      Anda login menggunakan akun Google. Email dan nama tidak dapat diubah melalui aplikasi ini. 
+                      Kelola informasi Anda melalui pengaturan akun Google.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Username (Read Only) */}
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
@@ -439,18 +490,29 @@ const SettingsPage = () => {
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
-                  <FiUser className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                  <FiUser className={`${authProvider === 'google' ? 'text-gray-300' : 'text-gray-400'} w-4 h-4 sm:w-5 sm:h-5`} />
                 </div>
                 <input
                   type="text"
                   name="name"
                   value={profileData.name}
                   onChange={handleProfileChange}
-                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
+                  disabled={authProvider === 'google'}
+                  className={`w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border rounded-lg focus:ring-2 focus:border-transparent text-sm sm:text-base ${
+                    authProvider === 'google'
+                      ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                   placeholder="Masukkan nama lengkap"
                   required
                 />
               </div>
+              {authProvider === 'google' && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <span className="text-amber-500">⚠</span>
+                  Nama tidak dapat diubah karena menggunakan akun Google OAuth
+                </p>
+              )}
             </div>
 
             {/* Email */}
@@ -460,31 +522,47 @@ const SettingsPage = () => {
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
-                  <FiMail className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                  <FiMail className={`${authProvider === 'google' ? 'text-gray-300' : 'text-gray-400'} w-4 h-4 sm:w-5 sm:h-5`} />
                 </div>
                 <input
                   type="email"
                   name="email"
                   value={profileData.email}
                   onChange={handleProfileChange}
-                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
+                  disabled={authProvider === 'google'}
+                  className={`w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border rounded-lg focus:ring-2 focus:border-transparent text-sm sm:text-base ${
+                    authProvider === 'google'
+                      ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                   placeholder="email@example.com"
                   required
                 />
               </div>
+              {authProvider === 'google' && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <span className="text-amber-500">⚠</span>
+                  Email tidak dapat diubah karena menggunakan akun Google OAuth
+                </p>
+              )}
             </div>
 
             {/* Submit Button */}
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={loadingProfile}
+                disabled={loadingProfile || authProvider === 'google'}
                 className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md text-sm sm:text-base"
               >
                 {loadingProfile ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
                     <span>Menyimpan...</span>
+                  </>
+                ) : authProvider === 'google' ? (
+                  <>
+                    <FiSave className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span>Tidak Dapat Diubah</span>
                   </>
                 ) : (
                   <>
@@ -497,187 +575,189 @@ const SettingsPage = () => {
           </form>
         </div>
 
-        {/* Change Password Card */}
-        <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
-            <div className="flex items-center gap-2 sm:gap-3 text-white">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <FiLock className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
-              </div>
-              <div>
-                <h2 className="text-lg sm:text-xl font-semibold">Ubah Password</h2>
-                <p className="text-xs sm:text-sm text-purple-100">Update password untuk keamanan akun</p>
-              </div>
-            </div>
-          </div>
-
-          <form onSubmit={handleChangePassword} className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
-            {/* PIN Verification (if user has PIN) */}
-            {hasPin && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 sm:p-4">
-                <div className="flex items-start gap-2 sm:gap-3 mb-2 sm:mb-3">
-                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <FiLock className="text-white w-3 h-3 sm:w-4 sm:h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm font-medium text-purple-900">Verifikasi Keamanan</p>
-                    <p className="text-xs text-purple-700 mt-0.5 sm:mt-1">
-                      Masukkan PIN Anda untuk mengubah password sebagai lapisan keamanan tambahan
-                    </p>
-                  </div>
+        {/* Change Password Card - Only show for non-Google OAuth users */}
+        {authProvider !== 'google' && (
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-3 text-white">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                  <FiLock className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
                 </div>
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-purple-900 mb-1 sm:mb-2">
-                    PIN Verifikasi (6 Digit) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
-                      <FiLock className="text-purple-400 w-4 h-4 sm:w-5 sm:h-5" />
+                  <h2 className="text-lg sm:text-xl font-semibold">Ubah Password</h2>
+                  <p className="text-xs sm:text-sm text-purple-100">Update password untuk keamanan akun</p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+              {/* PIN Verification (if user has PIN) */}
+              {hasPin && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-start gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <FiLock className="text-white w-3 h-3 sm:w-4 sm:h-4" />
                     </div>
-                    <input
-                      type={showVerificationPin ? 'text' : 'password'}
-                      name="verificationPin"
-                      value={passwordWithPinData.verificationPin}
-                      onChange={handlePasswordChange}
-                      className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-center text-xl sm:text-2xl tracking-widest"
-                      placeholder="••••••"
-                      maxLength={6}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowVerificationPin(!showVerificationPin)}
-                      className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-purple-400 hover:text-purple-600"
-                    >
-                      {showVerificationPin ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
-                    </button>
+                    <div>
+                      <p className="text-xs sm:text-sm font-medium text-purple-900">Verifikasi Keamanan</p>
+                      <p className="text-xs text-purple-700 mt-0.5 sm:mt-1">
+                        Masukkan PIN Anda untuk mengubah password sebagai lapisan keamanan tambahan
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs sm:text-sm font-medium text-purple-900 mb-1 sm:mb-2">
+                      PIN Verifikasi (6 Digit) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                        <FiLock className="text-purple-400 w-4 h-4 sm:w-5 sm:h-5" />
+                      </div>
+                      <input
+                        type={showVerificationPin ? 'text' : 'password'}
+                        name="verificationPin"
+                        value={passwordWithPinData.verificationPin}
+                        onChange={handlePasswordChange}
+                        className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-center text-xl sm:text-2xl tracking-widest"
+                        placeholder="••••••"
+                        maxLength={6}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowVerificationPin(!showVerificationPin)}
+                        className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-purple-400 hover:text-purple-600"
+                      >
+                        {showVerificationPin ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Current Password */}
-            <div>
-              <div className="flex justify-between items-center mb-1 sm:mb-2">
-                <label className="block text-xs sm:text-sm font-medium text-gray-700">
-                  Password Saat Ini <span className="text-red-500">*</span>
+              {/* Current Password */}
+              <div>
+                <div className="flex justify-between items-center mb-1 sm:mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700">
+                    Password Saat Ini <span className="text-red-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-xs sm:text-sm text-purple-600 hover:text-purple-700 hover:underline font-medium"
+                  >
+                    Lupa Password?
+                  </button>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                    <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <input
+                    type={showCurrentPassword ? 'text' : 'password'}
+                    name="currentPassword"
+                    value={passwordWithPinData.currentPassword}
+                    onChange={handlePasswordChange}
+                    className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
+                    placeholder="Masukkan password saat ini"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    {showCurrentPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* New Password */}
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                  Password Baru <span className="text-red-500">*</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  className="text-xs sm:text-sm text-purple-600 hover:text-purple-700 hover:underline font-medium"
-                >
-                  Lupa Password?
-                </button>
-              </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                    <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    name="newPassword"
+                    value={passwordWithPinData.newPassword}
+                    onChange={handlePasswordChange}
+                    className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
+                    placeholder="Masukkan password baru (min. 6 karakter)"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    {showNewPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  </button>
                 </div>
-                <input
-                  type={showCurrentPassword ? 'text' : 'password'}
-                  name="currentPassword"
-                  value={passwordWithPinData.currentPassword}
-                  onChange={handlePasswordChange}
-                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
-                  placeholder="Masukkan password saat ini"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showCurrentPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
-                </button>
               </div>
-            </div>
 
-            {/* New Password */}
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
-                Password Baru <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+              {/* Confirm Password */}
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                  Konfirmasi Password Baru <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                    <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    name="confirmPassword"
+                    value={passwordWithPinData.confirmPassword}
+                    onChange={handlePasswordChange}
+                    className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
+                    placeholder="Ulangi password baru"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    {showConfirmPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  </button>
                 </div>
-                <input
-                  type={showNewPassword ? 'text' : 'password'}
-                  name="newPassword"
-                  value={passwordWithPinData.newPassword}
-                  onChange={handlePasswordChange}
-                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
-                  placeholder="Masukkan password baru (min. 6 karakter)"
-                  required
-                />
+              </div>
+
+              {/* Password Strength Info */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                <p className="text-xs sm:text-sm text-yellow-800">
+                  <strong>Tips keamanan:</strong> Gunakan kombinasi huruf besar, huruf kecil, angka, dan simbol untuk password yang lebih kuat.
+                </p>
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex justify-end">
                 <button
-                  type="button"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  type="submit"
+                  disabled={loadingPassword}
+                  className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md text-sm sm:text-base"
                 >
-                  {showNewPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {loadingPassword ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
+                      <span>Mengubah...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FiLock className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span>Ubah Password</span>
+                    </>
+                  )}
                 </button>
               </div>
-            </div>
-
-            {/* Confirm Password */}
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
-                Konfirmasi Password Baru <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  name="confirmPassword"
-                  value={passwordWithPinData.confirmPassword}
-                  onChange={handlePasswordChange}
-                  className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
-                  placeholder="Ulangi password baru"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showConfirmPassword ? <FiEyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <FiEye className="w-4 h-4 sm:w-5 sm:h-5" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Password Strength Info */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
-              <p className="text-xs sm:text-sm text-yellow-800">
-                <strong>Tips keamanan:</strong> Gunakan kombinasi huruf besar, huruf kecil, angka, dan simbol untuk password yang lebih kuat.
-              </p>
-            </div>
-
-            {/* Submit Button */}
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={loadingPassword}
-                className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md text-sm sm:text-base"
-              >
-                {loadingPassword ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
-                    <span>Mengubah...</span>
-                  </>
-                ) : (
-                  <>
-                    <FiLock className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span>Ubah Password</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+            </form>
+          </div>
+        )}
 
         {/* Security PIN Card */}
         <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
@@ -806,33 +886,35 @@ const SettingsPage = () => {
               </div>
             </div>
 
-            {/* Current Password for Verification */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Password Saat Ini (Untuk Verifikasi) <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400" size={20} />
+            {/* Current Password for Verification - Only show for non-Google OAuth users */}
+            {authProvider !== 'google' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password Saat Ini (Untuk Verifikasi) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiLock className="text-gray-400" size={20} />
+                  </div>
+                  <input
+                    type={showPinPassword ? 'text' : 'password'}
+                    name="currentPassword"
+                    value={pinData.currentPassword}
+                    onChange={handlePinChange}
+                    className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Masukkan password saat ini"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPinPassword(!showPinPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    {showPinPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                  </button>
                 </div>
-                <input
-                  type={showPinPassword ? 'text' : 'password'}
-                  name="currentPassword"
-                  value={pinData.currentPassword}
-                  onChange={handlePinChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="Masukkan password saat ini"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPinPassword(!showPinPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showPinPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
-                </button>
               </div>
-            </div>
+            )}
 
             {/* Info Box */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

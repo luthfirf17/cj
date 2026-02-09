@@ -48,6 +48,7 @@ const BackupDataPage = () => {
     services: true,
     responsibleParties: true,
     serviceResponsibleParties: true,
+    bookingNames: true,
     bookingsAndPayments: true, // Gabung booking & payments
     expenses: true,
     expenseCategories: true
@@ -59,6 +60,7 @@ const BackupDataPage = () => {
     services: [],
     responsibleParties: [],
     serviceResponsibleParties: [],
+    bookingNames: [],
     bookings: [],
     payments: [],
     expenses: [],
@@ -71,6 +73,7 @@ const BackupDataPage = () => {
     services: [],
     responsibleParties: [],
     serviceResponsibleParties: [],
+    bookingNames: [],
     bookings: [],
     payments: [],
     expenses: [],
@@ -83,6 +86,7 @@ const BackupDataPage = () => {
     services: false,
     responsibleParties: false,
     serviceResponsibleParties: false,
+    bookingNames: false,
     bookings: false,
     payments: false,
     expenses: false,
@@ -91,6 +95,7 @@ const BackupDataPage = () => {
     importServices: false,
     importResponsibleParties: false,
     importServiceResponsibleParties: false,
+    importBookingNames: false,
     importBookings: false,
     importExpenses: false,
     importCategories: false
@@ -102,6 +107,7 @@ const BackupDataPage = () => {
     services: '',
     responsibleParties: '',
     serviceResponsibleParties: '',
+    bookingNames: '',
     bookings: '',
     payments: '',
     expenses: '',
@@ -114,6 +120,7 @@ const BackupDataPage = () => {
     services: '',
     responsibleParties: '',
     serviceResponsibleParties: '',
+    bookingNames: '',
     bookings: '',
     expenses: '',
     expenseCategories: ''
@@ -200,11 +207,12 @@ const BackupDataPage = () => {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, bookingsRes, paymentsRes, expensesRes, categoriesRes] = await Promise.all([
+      const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, bookingNamesRes, bookingsRes, paymentsRes, expensesRes, categoriesRes] = await Promise.all([
         api.get('/clients').catch(() => ({ data: [] })),
         api.get('/services').catch(() => ({ data: { data: [] } })),
         api.get('/user/responsible-parties').catch(() => ({ data: { data: [] } })),
         api.get('/user/service-responsible-parties').catch(() => ({ data: { data: [] } })),
+        api.get('/booking-names').catch(() => ({ data: [] })),
         api.get('/bookings').catch(() => ({ data: [] })),
         api.get('/payments').catch(() => ({ data: [] })),
         api.get('/expenses').catch(() => ({ data: [] })),
@@ -216,6 +224,7 @@ const BackupDataPage = () => {
         services: servicesRes.data.length,
         responsibleParties: responsiblePartiesRes.data?.data?.length || 0,
         serviceResponsibleParties: serviceResponsiblePartiesRes.data?.data?.length || 0,
+        bookingNames: bookingNamesRes.data?.length || 0,
         bookings: bookingsRes.data.length,
         payments: paymentsRes.data.length,
         expenses: expensesRes.data.length,
@@ -239,6 +248,7 @@ const BackupDataPage = () => {
         services: servicesRes.data,
         responsibleParties: responsiblePartiesRes.data?.data || [],
         serviceResponsibleParties: serviceResponsiblePartiesRes.data?.data || [],
+        bookingNames: bookingNamesRes.data || [],
         bookings: bookingsRes.data,
         payments: paymentsRes.data,
         expenses: expensesRes.data,
@@ -248,12 +258,14 @@ const BackupDataPage = () => {
       // Initially select all IDs based on exportSelection
       const responsiblePartiesData = responsiblePartiesRes.data?.data || [];
       const serviceResponsiblePartiesData = serviceResponsiblePartiesRes.data?.data || [];
+      const bookingNamesData = bookingNamesRes.data || [];
       
       const selectedIdsObj = {
         clients: exportSelection.clients ? clientsRes.data.map(item => item.id) : [],
         services: exportSelection.services ? servicesRes.data.map(item => item.id) : [],
         responsibleParties: exportSelection.responsibleParties ? responsiblePartiesData.map(item => item.id) : [],
         serviceResponsibleParties: exportSelection.serviceResponsibleParties ? serviceResponsiblePartiesData.map(item => item.id) : [],
+        bookingNames: exportSelection.bookingNames ? bookingNamesData.map(item => item.id) : [],
         bookings: exportSelection.bookingsAndPayments ? bookingsRes.data.map(item => item.id) : [],
         payments: exportSelection.bookingsAndPayments ? paymentsRes.data.map(item => item.id) : [],
         expenses: exportSelection.expenses ? expensesRes.data.map(item => item.id) : [],
@@ -317,6 +329,7 @@ const BackupDataPage = () => {
       params.append('services', exportSelection.services.toString());
       params.append('responsibleParties', exportSelection.responsibleParties.toString());
       params.append('serviceResponsibleParties', exportSelection.serviceResponsibleParties.toString());
+      params.append('bookingNames', exportSelection.bookingNames.toString());
       params.append('bookings', exportSelection.bookingsAndPayments.toString());
       params.append('payments', exportSelection.bookingsAndPayments.toString());
       params.append('expenses', exportSelection.expenses.toString());
@@ -334,6 +347,9 @@ const BackupDataPage = () => {
       }
       if (selectedIds.serviceResponsibleParties.length !== allData.serviceResponsibleParties.length) {
         params.append('serviceResponsiblePartiesIds', JSON.stringify(selectedIds.serviceResponsibleParties));
+      }
+      if (selectedIds.bookingNames.length !== allData.bookingNames.length) {
+        params.append('bookingNamesIds', JSON.stringify(selectedIds.bookingNames));
       }
       if (selectedIds.bookings.length !== allData.bookings.length) {
         params.append('bookingsIds', JSON.stringify(selectedIds.bookings));
@@ -382,7 +398,7 @@ const BackupDataPage = () => {
   const handleToggleAll = (checked) => {
     // Prevent toggle if data is not loaded yet
     if (!allData.clients || !allData.services || !allData.responsibleParties || !allData.serviceResponsibleParties || 
-        !allData.bookings || !allData.payments || !allData.expenses || !allData.expenseCategories) {
+        !allData.bookingNames || !allData.bookings || !allData.payments || !allData.expenses || !allData.expenseCategories) {
       return;
     }
     
@@ -392,6 +408,7 @@ const BackupDataPage = () => {
       services: checked,
       responsibleParties: checked,
       serviceResponsibleParties: checked,
+      bookingNames: checked,
       bookingsAndPayments: checked,
       expenses: checked,
       expenseCategories: checked
@@ -404,6 +421,7 @@ const BackupDataPage = () => {
         services: allData.services.map(item => item.id),
         responsibleParties: allData.responsibleParties.map(item => item.id),
         serviceResponsibleParties: allData.serviceResponsibleParties.map(item => item.id),
+        bookingNames: allData.bookingNames.map(item => item.id),
         bookings: allData.bookings.map(item => item.id),
         payments: allData.payments.map(item => item.id),
         expenses: allData.expenses.map(item => item.id),
@@ -415,6 +433,7 @@ const BackupDataPage = () => {
         services: [],
         responsibleParties: [],
         serviceResponsibleParties: [],
+        bookingNames: [],
         bookings: [],
         payments: [],
         expenses: [],
@@ -481,6 +500,12 @@ const BackupDataPage = () => {
           );
         });
         categoryName = 'Data Layanan Penanggung Jawab';
+      } else if (category === 'bookingNames') {
+        hasRelatedBookings = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          return booking && booking.booking_name;
+        });
+        categoryName = 'Data Nama Booking';
       }
       
       // If there are related bookings, prevent unchecking
@@ -512,6 +537,46 @@ const BackupDataPage = () => {
           ...prev,
           bookings: [],
           payments: []
+        }));
+      }
+    } else if (category === 'bookingNames') {
+      console.log('🎯 Handling bookingNames category');
+      if (checked) {
+        // Select all booking names
+        setSelectedIds(prev => ({
+          ...prev,
+          bookingNames: allData.bookingNames.map(item => item.id)
+        }));
+        
+        // Auto-select related bookings that use these booking names
+        const relatedBookingIds = new Set();
+        selectedIds.bookingNames.forEach(bookingNameId => {
+          const bookingName = allData.bookingNames.find(bn => bn.id === bookingNameId);
+          if (bookingName) {
+            // Find all bookings that use this booking name
+            allData.bookings.forEach(booking => {
+              if (booking.booking_name === bookingName.name) {
+                relatedBookingIds.add(booking.id);
+              }
+            });
+          }
+        });
+        
+        if (relatedBookingIds.size > 0) {
+          setSelectedIds(prev => ({
+            ...prev,
+            bookings: Array.from(new Set([...prev.bookings, ...relatedBookingIds])),
+            payments: Array.from(new Set([...prev.payments, ...relatedBookingIds])) // payments follow bookings
+          }));
+          
+          // Auto-select related clients, services, etc. from the related bookings
+          autoSelectRelatedData(Array.from(relatedBookingIds), 'bookingNames');
+        }
+      } else {
+        // Clear booking names
+        setSelectedIds(prev => ({
+          ...prev,
+          bookingNames: []
         }));
       }
     } else if (checked && allData[category]) {
@@ -622,6 +687,15 @@ const BackupDataPage = () => {
           return srp && srp.service_id === booking.service_id;
         });
         itemType = 'layanan penanggung jawab';
+      } else if (category === 'bookingNames') {
+        // Check if this booking name is used by selected bookings
+        isStillNeeded = selectedIds.bookings.some(bookingId => {
+          const booking = allData.bookings.find(b => b.id === bookingId);
+          if (!booking || !booking.booking_name) return false;
+          const bookingName = allData.bookingNames.find(bn => bn.id === itemId);
+          return bookingName && bookingName.name === booking.booking_name;
+        });
+        itemType = 'nama booking';
       }
       
       if (isStillNeeded) {
@@ -742,6 +816,15 @@ const BackupDataPage = () => {
                 }
               });
             }
+            
+            // Auto-select booking name if this booking has one
+            if (booking.booking_name) {
+              const bookingNameRecord = allData.bookingNames.find(bn => bn.name === booking.booking_name);
+              if (bookingNameRecord && !updatedIds.bookingNames.includes(bookingNameRecord.id)) {
+                updatedIds.bookingNames = [...updatedIds.bookingNames, bookingNameRecord.id];
+                setExportSelection(p => ({ ...p, bookingNames: true }));
+              }
+            }
           } else {
             // Removing booking: also remove related payments
             const relatedPaymentIds = allData.payments
@@ -805,6 +888,130 @@ const BackupDataPage = () => {
         }
       }
       
+      // If toggling a booking name, auto-handle related bookings
+      if (category === 'bookingNames') {
+        const bookingName = allData.bookingNames.find(bn => bn.id === itemId);
+        if (bookingName) {
+          if (isAdding) {
+            // Adding booking name: auto-select related bookings that use this name
+            const relatedBookingIds = allData.bookings
+              .filter(booking => booking.booking_name === bookingName.name)
+              .map(booking => booking.id);
+            
+            relatedBookingIds.forEach(bookingId => {
+              if (!updatedIds.bookings.includes(bookingId)) {
+                updatedIds.bookings = [...updatedIds.bookings, bookingId];
+                setExportSelection(p => ({ ...p, bookingsAndPayments: true }));
+              }
+              
+              // Also auto-select payments for these bookings
+              const relatedPayments = allData.payments.filter(p => p.booking_id === bookingId);
+              relatedPayments.forEach(payment => {
+                if (!updatedIds.payments.includes(payment.id)) {
+                  updatedIds.payments = [...updatedIds.payments, payment.id];
+                }
+              });
+            });
+            
+            // Auto-select related clients, services, etc. from the related bookings
+            if (relatedBookingIds.length > 0) {
+              autoSelectRelatedData(relatedBookingIds, 'bookingNames');
+            }
+          } else {
+            // Removing booking name: also remove related bookings that are only using this name
+            const relatedBookingIds = allData.bookings
+              .filter(booking => booking.booking_name === bookingName.name)
+              .map(booking => booking.id);
+            
+            // Only remove bookings if they are selected and only use this booking name
+            const bookingsToRemove = relatedBookingIds.filter(bookingId => 
+              updatedIds.bookings.includes(bookingId)
+            );
+            
+            updatedIds.bookings = updatedIds.bookings.filter(id => !bookingsToRemove.includes(id));
+            
+            // Also remove related payments
+            const paymentsToRemove = allData.payments
+              .filter(p => bookingsToRemove.includes(p.booking_id))
+              .map(p => p.id);
+            updatedIds.payments = updatedIds.payments.filter(id => !paymentsToRemove.includes(id));
+            
+            // Check if we need to remove other related data that are no longer needed
+            const remainingBookingIds = updatedIds.bookings;
+            const stillNeededClientIds = new Set();
+            const stillNeededServiceIds = new Set();
+            const stillNeededResponsiblePartyIds = new Set();
+            const stillNeededServiceResponsiblePartyIds = new Set();
+            const stillNeededBookingNameIds = new Set();
+            
+            remainingBookingIds.forEach(bookingId => {
+              const booking = allData.bookings.find(b => b.id === bookingId);
+              if (booking) {
+                if (booking.client_id) stillNeededClientIds.add(booking.client_id);
+                if (booking.service_id) stillNeededServiceIds.add(booking.service_id);
+                if (booking.booking_name) {
+                  const bnRecord = allData.bookingNames.find(bn => bn.name === booking.booking_name);
+                  if (bnRecord) stillNeededBookingNameIds.add(bnRecord.id);
+                }
+                
+                // Check responsible parties from booking details
+                if (booking.notes) {
+                  try {
+                    const bookingDetails = JSON.parse(booking.notes);
+                    if (bookingDetails && bookingDetails.services) {
+                      bookingDetails.services.forEach(service => {
+                        if (service.responsible_party_id) {
+                          stillNeededResponsiblePartyIds.add(service.responsible_party_id);
+                        }
+                      });
+                    }
+                  } catch (error) {
+                    // Notes is not JSON format, skip
+                  }
+                }
+                
+                // Check service-responsible-parties
+                if (booking.service_id) {
+                  allData.serviceResponsibleParties.forEach(srp => {
+                    if (srp.service_id === booking.service_id) {
+                      stillNeededServiceResponsiblePartyIds.add(srp.id);
+                      stillNeededResponsiblePartyIds.add(srp.responsible_party_id);
+                    }
+                  });
+                }
+              }
+            });
+            
+            // Remove data that are no longer needed
+            updatedIds.clients = updatedIds.clients.filter(id => stillNeededClientIds.has(id));
+            updatedIds.services = updatedIds.services.filter(id => stillNeededServiceIds.has(id));
+            updatedIds.responsibleParties = updatedIds.responsibleParties.filter(id => stillNeededResponsiblePartyIds.has(id));
+            updatedIds.serviceResponsibleParties = updatedIds.serviceResponsibleParties.filter(id => stillNeededServiceResponsiblePartyIds.has(id));
+            updatedIds.bookingNames = updatedIds.bookingNames.filter(id => stillNeededBookingNameIds.has(id));
+            
+            // Update category checkboxes if no items remain
+            if (updatedIds.clients.length === 0) {
+              setExportSelection(p => ({ ...p, clients: false }));
+            }
+            if (updatedIds.services.length === 0) {
+              setExportSelection(p => ({ ...p, services: false }));
+            }
+            if (updatedIds.responsibleParties.length === 0) {
+              setExportSelection(p => ({ ...p, responsibleParties: false }));
+            }
+            if (updatedIds.serviceResponsibleParties.length === 0) {
+              setExportSelection(p => ({ ...p, serviceResponsibleParties: false }));
+            }
+            if (updatedIds.bookingNames.length === 0) {
+              setExportSelection(p => ({ ...p, bookingNames: false }));
+            }
+            if (updatedIds.bookings.length === 0) {
+              setExportSelection(p => ({ ...p, bookingsAndPayments: false }));
+            }
+          }
+        }
+      }
+      
       return updatedIds;
     });
   };
@@ -815,6 +1022,7 @@ const BackupDataPage = () => {
     const relatedServiceIds = new Set();
     const relatedResponsiblePartyIds = new Set();
     const relatedServiceResponsiblePartyIds = new Set();
+    const relatedBookingNameIds = new Set();
     
     // Find related client_id and service_id from selected bookings
     bookingIds.forEach(bookingId => {
@@ -822,6 +1030,13 @@ const BackupDataPage = () => {
       if (booking) {
         if (booking.client_id) relatedClientIds.add(booking.client_id);
         if (booking.service_id) relatedServiceIds.add(booking.service_id);
+        if (booking.booking_name) {
+          // Find booking name ID from booking_names table that matches the booking_name
+          const bookingNameRecord = allData.bookingNames.find(bn => bn.name === booking.booking_name);
+          if (bookingNameRecord) {
+            relatedBookingNameIds.add(bookingNameRecord.id);
+          }
+        }
         
         // Check for responsible parties in booking details (stored in notes as JSON)
         if (booking.notes) {
@@ -859,13 +1074,15 @@ const BackupDataPage = () => {
       const newServiceIds = new Set([...prev.services, ...relatedServiceIds]);
       const newResponsiblePartyIds = new Set([...prev.responsibleParties, ...relatedResponsiblePartyIds]);
       const newServiceResponsiblePartyIds = new Set([...prev.serviceResponsibleParties, ...relatedServiceResponsiblePartyIds]);
+      const newBookingNameIds = new Set([...prev.bookingNames, ...relatedBookingNameIds]);
       
       const newSelectedIds = {
         ...prev,
         clients: Array.from(newClientIds),
         services: Array.from(newServiceIds),
         responsibleParties: Array.from(newResponsiblePartyIds),
-        serviceResponsibleParties: Array.from(newServiceResponsiblePartyIds)
+        serviceResponsibleParties: Array.from(newServiceResponsiblePartyIds),
+        bookingNames: Array.from(newBookingNameIds)
       };
       
       console.log('🔄 Auto-selection update:', {
@@ -909,6 +1126,14 @@ const BackupDataPage = () => {
       setSelectedIds(prev => ({
         ...prev,
         serviceResponsibleParties: Array.from(new Set([...prev.serviceResponsibleParties, ...relatedServiceResponsiblePartyIds]))
+      }));
+    }
+    if (relatedBookingNameIds.size > 0) {
+      setExportSelection(prev => ({ ...prev, bookingNames: true }));
+      // Also select all booking name IDs
+      setSelectedIds(prev => ({
+        ...prev,
+        bookingNames: Array.from(new Set([...prev.bookingNames, ...relatedBookingNameIds]))
       }));
     }
   };
@@ -1059,6 +1284,8 @@ const BackupDataPage = () => {
         return `${item.description || ''} ${item.category_name || ''} ${item.amount || ''}`;
       case 'expenseCategories':
         return `${item.name}`;
+      case 'bookingNames':
+        return `${item.name}`;
       default:
         return JSON.stringify(item);
     }
@@ -1124,6 +1351,8 @@ const BackupDataPage = () => {
         return `${item.description || 'No description'} - Rp ${parseFloat(item.amount || 0).toLocaleString('id-ID')}`;
       case 'expenseCategories':
         return item.name;
+      case 'bookingNames':
+        return item.name;
       default:
         return JSON.stringify(item);
     }
@@ -1143,6 +1372,7 @@ const BackupDataPage = () => {
       params.append('services', exportSelection.services);
       params.append('responsibleParties', exportSelection.responsibleParties);
       params.append('serviceResponsibleParties', exportSelection.serviceResponsibleParties);
+      params.append('bookingNames', exportSelection.bookingNames);
       params.append('bookings', exportSelection.bookingsAndPayments);
       params.append('payments', exportSelection.bookingsAndPayments);
       params.append('expenses', exportSelection.expenses);
@@ -1204,11 +1434,12 @@ const BackupDataPage = () => {
         const backupData = JSON.parse(fileContent);
         
         // Fetch current data from backend to compare
-        const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, categoriesRes, bookingsRes, expensesRes] = await Promise.all([
+        const [clientsRes, servicesRes, responsiblePartiesRes, serviceResponsiblePartiesRes, bookingNamesRes, categoriesRes, bookingsRes, expensesRes] = await Promise.all([
           api.get('/clients').catch(() => ({ data: [] })),
           api.get('/services').catch(() => ({ data: { data: [] } })),
           api.get('/user/responsible-parties').catch(() => ({ data: { data: [] } })),
           api.get('/user/service-responsible-parties').catch(() => ({ data: { data: [] } })),
+          api.get('/booking-names').catch(() => ({ data: [] })),
           api.get('/expense-categories').catch(() => ({ data: [] })),
           api.get('/bookings').catch(() => ({ data: [] })),
           api.get('/expenses').catch(() => ({ data: [] }))
@@ -1219,6 +1450,7 @@ const BackupDataPage = () => {
         console.log('Services response:', servicesRes);
         console.log('Responsible Parties response:', responsiblePartiesRes);
         console.log('Service Responsible Parties response:', serviceResponsiblePartiesRes);
+        console.log('Booking Names response:', bookingNamesRes);
         console.log('Categories response:', categoriesRes);
         console.log('Bookings response:', bookingsRes);
         console.log('Expenses response:', expensesRes);
@@ -1245,6 +1477,7 @@ const BackupDataPage = () => {
           services: extractData(servicesRes),
           responsibleParties: extractData(responsiblePartiesRes),
           serviceResponsibleParties: extractData(serviceResponsiblePartiesRes),
+          bookingNames: extractData(bookingNamesRes),
           expenseCategories: extractData(categoriesRes),
           bookings: extractData(bookingsRes),
           expenses: extractData(expensesRes)
@@ -1256,6 +1489,7 @@ const BackupDataPage = () => {
         console.log('currentData.services length:', currentData.services?.length);
         console.log('currentData.responsibleParties length:', currentData.responsibleParties?.length);
         console.log('currentData.serviceResponsibleParties length:', currentData.serviceResponsibleParties?.length);
+        console.log('currentData.bookingNames length:', currentData.bookingNames?.length);
         console.log('currentData.bookings length:', currentData.bookings?.length);
         console.log('currentData.expenses length:', currentData.expenses?.length);
         if (currentData.responsibleParties?.length > 0) {
@@ -1298,6 +1532,7 @@ const BackupDataPage = () => {
         console.log('Services duplikat:', duplicates.services?.length || 0);
         console.log('Responsible Parties duplikat:', duplicates.responsibleParties?.length || 0);
         console.log('Service Responsible Parties duplikat:', duplicates.serviceResponsibleParties?.length || 0);
+        console.log('Booking Names duplikat:', duplicates.bookingNames?.length || 0);
         console.log('Bookings duplikat:', duplicates.bookings?.length || 0);
         console.log('Expenses duplikat:', duplicates.expenses?.length || 0);
         console.log('Expense Categories duplikat:', duplicates.expenseCategories?.length || 0);
@@ -1358,6 +1593,7 @@ const BackupDataPage = () => {
       services: [],
       responsibleParties: [],
       serviceResponsibleParties: [],
+      bookingNames: [],
       expenseCategories: [],
       bookings: [],
       expenses: []
@@ -1473,6 +1709,24 @@ const BackupDataPage = () => {
           item.phone.replace(/\D/g, '') === existing.phone.replace(/\D/g, '')
         );
         if (isDuplicate) duplicates.serviceResponsibleParties.push(index);
+      });
+    }
+    
+    // Check booking names (by name)
+    if (backupData.bookingNames) {
+      console.log('🏷️ Checking booking names for duplicates...');
+      console.log('Backup booking names:', backupData.bookingNames.length);
+      console.log('Current booking names:', currentData.bookingNames?.length || 0);
+      
+      backupData.bookingNames.forEach((item, index) => {
+        const isDuplicate = currentData.bookingNames?.some(existing => 
+          item.name && existing.name && 
+          item.name.trim().toLowerCase() === existing.name.trim().toLowerCase()
+        );
+        if (isDuplicate) {
+          console.log(`  🔄 Duplicate booking name found: ${item.name}`);
+          duplicates.bookingNames.push(index);
+        }
       });
     }
     
@@ -1881,8 +2135,9 @@ const BackupDataPage = () => {
     console.log('  Services:', duplicates.services.length);
     console.log('  Responsible Parties:', duplicates.responsibleParties.length);
     console.log('  Service Responsible Parties:', duplicates.serviceResponsibleParties.length);
+    console.log('  Booking Names:', duplicates.bookingNames.length);
     console.log('  Bookings:', duplicates.bookings.length);
-    console.log('  Expenses:', duplicates.expenseCategories.length);
+    console.log('  Expenses:', duplicates.expenses.length);
     console.log('  Expense Categories:', duplicates.expenseCategories.length);
     
     return duplicates;
@@ -1893,14 +2148,15 @@ const BackupDataPage = () => {
     // Auto-select all non-duplicate items
     const selection = {
       companySettings: false,
-      clients: backupData.clients.map((_, index) => !duplicates.clients?.includes(index) ? index : -1).filter(idx => idx !== -1),
-      services: backupData.services.map((_, index) => !duplicates.services?.includes(index) ? index : -1).filter(idx => idx !== -1),
-      responsibleParties: backupData.responsibleParties.map((_, index) => !duplicates.responsibleParties?.includes(index) ? index : -1).filter(idx => idx !== -1),
-      serviceResponsibleParties: backupData.serviceResponsibleParties.map((_, index) => !duplicates.serviceResponsibleParties?.includes(index) ? index : -1).filter(idx => idx !== -1),
-      bookings: backupData.bookings.map((_, index) => !duplicates.bookings?.includes(index) ? index : -1).filter(idx => idx !== -1),
+      clients: backupData.clients?.map((_, index) => !duplicates.clients?.includes(index) ? index : -1).filter(idx => idx !== -1) || [],
+      services: backupData.services?.map((_, index) => !duplicates.services?.includes(index) ? index : -1).filter(idx => idx !== -1) || [],
+      responsibleParties: backupData.responsibleParties?.map((_, index) => !duplicates.responsibleParties?.includes(index) ? index : -1).filter(idx => idx !== -1) || [],
+      serviceResponsibleParties: backupData.serviceResponsibleParties?.map((_, index) => !duplicates.serviceResponsibleParties?.includes(index) ? index : -1).filter(idx => idx !== -1) || [],
+      bookingNames: backupData.bookingNames?.map((_, index) => !duplicates.bookingNames?.includes(index) ? index : -1).filter(idx => idx !== -1) || [],
+      bookings: backupData.bookings?.map((_, index) => !duplicates.bookings?.includes(index) ? index : -1).filter(idx => idx !== -1) || [],
       payments: [], // Payments are handled separately based on selected bookings
-      expenses: backupData.expenses.map((_, index) => !duplicates.expenses?.includes(index) ? index : -1).filter(idx => idx !== -1),
-      expenseCategories: backupData.expenseCategories.map((_, index) => !duplicates.expenseCategories?.includes(index) ? index : -1).filter(idx => idx !== -1)
+      expenses: backupData.expenses?.map((_, index) => !duplicates.expenses?.includes(index) ? index : -1).filter(idx => idx !== -1) || [],
+      expenseCategories: backupData.expenseCategories?.map((_, index) => !duplicates.expenseCategories?.includes(index) ? index : -1).filter(idx => idx !== -1) || []
     };
     
     return selection;
@@ -1932,10 +2188,12 @@ const BackupDataPage = () => {
         return `${item.name || ''} ${item.phone || ''} ${item.address || ''}`.toLowerCase();
       case 'serviceResponsibleParties':
         return `${item.name || ''} ${item.phone || ''} ${item.address || ''}`.toLowerCase();
+      case 'bookingNames':
+        return `${item.name || ''}`.toLowerCase();
       case 'expenseCategories':
         return `${item.name || ''}`.toLowerCase();
       case 'bookings':
-        return `${item.booking_date || ''} ${item.booking_time || ''} ${item.status || ''} ${item.total_price || ''} ${item.location_name || ''}`.toLowerCase();
+        return `${item.booking_date || ''} ${item.booking_time || ''} ${item.status || ''} ${item.total_price || ''} ${item.location_name || ''} ${item.booking_name || ''}`.toLowerCase();
       case 'expenses':
         return `${item.description || ''} ${item.amount || ''} ${item.expense_date || ''}`.toLowerCase();
       default:
@@ -1954,6 +2212,8 @@ const BackupDataPage = () => {
         return `${item.name}${item.phone ? ` - ${item.phone}` : ''}${item.address ? ` (${item.address})` : ''}`;
       case 'serviceResponsibleParties':
         return `${item.name}${item.phone ? ` - ${item.phone}` : ''}${item.address ? ` (${item.address})` : ''}`;
+      case 'bookingNames':
+        return item.name;
       case 'expenseCategories':
         return item.name;
       case 'bookings':
@@ -2094,6 +2354,17 @@ const BackupDataPage = () => {
           const currentServices = newSelection.services || [];
           newSelection.services = [...new Set([...currentServices, ...serviceIndices])];
         }
+        
+        // Auto-check related booking name (if not duplicate)
+        if (booking.booking_name && importData.bookingNames) {
+          const bookingNameIndex = importData.bookingNames.findIndex(bn => bn.name === booking.booking_name);
+          if (bookingNameIndex !== -1 && !duplicateData.bookingNames?.includes(bookingNameIndex)) {
+            const currentBookingNames = newSelection.bookingNames || [];
+            if (!currentBookingNames.includes(bookingNameIndex)) {
+              newSelection.bookingNames = [...currentBookingNames, bookingNameIndex];
+            }
+          }
+        }
       }
       
       // Special handling for expenses: auto-check related expense category
@@ -2203,6 +2474,29 @@ const BackupDataPage = () => {
         }
       }
       
+      // Prevent unchecking booking names that are still used by checked bookings
+      if (category === 'bookingNames' && isSelected && importData) {
+        const selectedBookings = newSelection.bookings || [];
+        
+        // Check if this booking name is still used by any checked booking
+        const bookingNameItem = importData.bookingNames[index];
+        const isStillUsed = selectedBookings.some(bookingIdx => {
+          const booking = importData.bookings[bookingIdx];
+          return booking.booking_name === bookingNameItem?.name;
+        });
+        
+        // If still used, prevent unchecking
+        if (isStillUsed) {
+          newSelection[category] = current; // Revert to previous state
+          
+          setTimeout(() => {
+            showNotification('warning', 
+              `Nama Booking "${bookingNameItem?.name}" masih digunakan oleh booking yang dipilih. Hapus centang booking terlebih dahulu.`
+            );
+          }, 100);
+        }
+      }
+      
       return newSelection;
     });
   };
@@ -2292,6 +2586,24 @@ const BackupDataPage = () => {
         // Add all collected indices to selection (merge with existing)
         newSelection.clients = [...new Set([...(prev.clients || []), ...clientIndices])];
         newSelection.services = [...new Set([...(prev.services || []), ...serviceIndices])];
+        
+        // Auto-check related booking names
+        const bookingNameIndices = new Set();
+        importData.bookings.forEach((booking, bookingIndex) => {
+          // Skip duplicate bookings
+          if (duplicateData.bookings?.includes(bookingIndex)) return;
+          
+          if (booking.booking_name && importData.bookingNames) {
+            const bookingNameIdx = importData.bookingNames.findIndex(bn => bn.name === booking.booking_name);
+            if (bookingNameIdx !== -1 && !duplicateData.bookingNames?.includes(bookingNameIdx)) {
+              bookingNameIndices.add(bookingNameIdx);
+            }
+          }
+        });
+        
+        if (bookingNameIndices.size > 0) {
+          newSelection.bookingNames = [...new Set([...(prev.bookingNames || []), ...bookingNameIndices])];
+        }
       }
       
       // Auto-check related expense categories when checking all expenses
@@ -2433,6 +2745,39 @@ const BackupDataPage = () => {
         }
       }
       
+      // Prevent unchecking all booking names if they are still used by checked bookings
+      if (category === 'bookingNames' && !checked && importData) {
+        const selectedBookings = prev.bookings || [];
+        
+        if (selectedBookings.length > 0) {
+          // Collect all booking names that are still used by checked bookings
+          const protectedIndices = new Set();
+          
+          selectedBookings.forEach(bookingIdx => {
+            const booking = importData.bookings[bookingIdx];
+            
+            if (booking.booking_name && importData.bookingNames) {
+              const bookingNameIdx = importData.bookingNames.findIndex(bn => bn.name === booking.booking_name);
+              if (bookingNameIdx !== -1) {
+                protectedIndices.add(bookingNameIdx);
+              }
+            }
+          });
+          
+          // Keep protected indices selected
+          if (protectedIndices.size > 0) {
+            newSelection.bookingNames = Array.from(protectedIndices);
+            
+            // Show notification
+            setTimeout(() => {
+              showNotification('warning', 
+                `Tidak dapat menghilangkan semua centang. ${protectedIndices.size} nama booking masih digunakan oleh booking yang dipilih.`
+              );
+            }, 100);
+          }
+        }
+      }
+      
       return newSelection;
     });
   };
@@ -2448,6 +2793,7 @@ const BackupDataPage = () => {
         importSelection.services?.some(idx => duplicateData.services?.includes(idx)) ||
         importSelection.responsibleParties?.some(idx => duplicateData.responsibleParties?.includes(idx)) ||
         importSelection.serviceResponsibleParties?.some(idx => duplicateData.serviceResponsibleParties?.includes(idx)) ||
+        importSelection.bookingNames?.some(idx => duplicateData.bookingNames?.includes(idx)) ||
         importSelection.bookings?.some(idx => duplicateData.bookings?.includes(idx)) ||
         importSelection.expenses?.some(idx => duplicateData.expenses?.includes(idx)) ||
         importSelection.expenseCategories?.some(idx => duplicateData.expenseCategories?.includes(idx));
@@ -2475,6 +2821,7 @@ const BackupDataPage = () => {
         services: importData.services || [],
         responsibleParties: importSelection.responsibleParties?.map(index => importData.responsibleParties[index]).filter(Boolean) || [],
         serviceResponsibleParties: importSelection.serviceResponsibleParties?.map(index => importData.serviceResponsibleParties[index]).filter(Boolean) || [],
+        bookingNames: importSelection.bookingNames?.map(index => importData.bookingNames[index]).filter(Boolean) || [],
         bookings: selectedBookings,
         payments: relatedPayments, // Include all payments for selected bookings
         expenses: importSelection.expenses?.map(index => importData.expenses[index]).filter(Boolean) || [],
@@ -2487,6 +2834,7 @@ const BackupDataPage = () => {
         services: importSelection.services || [],
         responsibleParties: importSelection.responsibleParties || [],
         serviceResponsibleParties: importSelection.serviceResponsibleParties || [],
+        bookingNames: importSelection.bookingNames || [],
         bookings: importSelection.bookings || [],
         expenses: importSelection.expenses || [],
         expenseCategories: importSelection.expenseCategories || []
@@ -2498,6 +2846,7 @@ const BackupDataPage = () => {
       console.log('Services:', selectedData.services.length);
       console.log('Responsible Parties:', selectedData.responsibleParties.length);
       console.log('Service Responsible Parties:', selectedData.serviceResponsibleParties.length);
+      console.log('Booking Names:', selectedData.bookingNames.length);
       console.log('Bookings:', selectedData.bookings.length);
       console.log('Payments:', selectedData.payments.length);
       console.log('Expenses:', selectedData.expenses.length);
@@ -2517,6 +2866,7 @@ const BackupDataPage = () => {
           services: selectedData.services.length > 0,
           responsibleParties: selectedData.responsibleParties.length > 0,
           serviceResponsibleParties: selectedData.serviceResponsibleParties.length > 0,
+          bookingNames: selectedData.bookingNames.length > 0,
           bookings: selectedData.bookings.length > 0,
           payments: selectedData.payments.length > 0,
           expenses: selectedData.expenses.length > 0,
@@ -3033,12 +3383,18 @@ const BackupDataPage = () => {
                           <span className="font-semibold">{importData.expenseCategories.length}</span> Kategori
                         </div>
                       )}
+                      {importData.bookingNames && (
+                        <div className="bg-white rounded px-2 py-1">
+                          <span className="font-semibold">{importData.bookingNames.length}</span> Nama Booking
+                        </div>
+                      )}
                     </div>
                     <p className="mt-3 text-green-700">
                       ✅ <span className="font-semibold">
                         {(importSelection.clients?.length || 0) + 
                          (importSelection.services?.length || 0) + 
                          (importSelection.responsibleParties?.length || 0) +
+                         (importSelection.bookingNames?.length || 0) +
                          (importSelection.bookings?.length || 0) + 
                          (importSelection.expenses?.length || 0) +
                          (importSelection.expenseCategories?.length || 0)}
@@ -3052,6 +3408,7 @@ const BackupDataPage = () => {
               {(duplicateData.clients?.length > 0 || 
                 duplicateData.services?.length > 0 || 
                 duplicateData.responsibleParties?.length > 0 ||
+                duplicateData.bookingNames?.length > 0 ||
                 duplicateData.expenseCategories?.length > 0 ||
                 duplicateData.bookings?.length > 0 ||
                 duplicateData.expenses?.length > 0) && (
@@ -3073,6 +3430,9 @@ const BackupDataPage = () => {
                         )}
                         {duplicateData.responsibleParties?.length > 0 && (
                           <li>{duplicateData.responsibleParties.length} penanggung jawab duplikat (berdasarkan nama & telepon)</li>
+                        )}
+                        {duplicateData.bookingNames?.length > 0 && (
+                          <li>{duplicateData.bookingNames.length} nama booking duplikat (berdasarkan nama)</li>
                         )}
                         {duplicateData.expenseCategories?.length > 0 && (
                           <li>{duplicateData.expenseCategories.length} kategori duplikat (berdasarkan nama)</li>
@@ -3376,6 +3736,186 @@ const BackupDataPage = () => {
                   </div>
                 )}
 
+                {/* Service Responsible Parties */}
+                {importData.serviceResponsibleParties && importData.serviceResponsibleParties.length > 0 && (
+                  <div className="border-2 border-teal-200 rounded-xl overflow-hidden">
+                    <div className="bg-teal-50 p-4">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-3 cursor-pointer flex-1">
+                          <input
+                            type="checkbox"
+                            checked={(() => {
+                              const nonDuplicateCount = importData.serviceResponsibleParties.filter((_, idx) => !duplicateData.serviceResponsibleParties?.includes(idx)).length;
+                              return nonDuplicateCount > 0 && importSelection.serviceResponsibleParties?.length === nonDuplicateCount;
+                            })()}
+                            onChange={(e) => handleToggleAllImport('serviceResponsibleParties', e.target.checked)}
+                            className="w-5 h-5 text-teal-600 rounded"
+                          />
+                          <div>
+                            <span className="font-semibold text-gray-800">Asosiasi Layanan & Penanggung Jawab</span>
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-teal-600 text-white rounded-full">
+                              {importSelection.serviceResponsibleParties?.length || 0} / {importData.serviceResponsibleParties.filter((_, idx) => !duplicateData.serviceResponsibleParties?.includes(idx)).length} dipilih
+                            </span>
+                            {duplicateData.serviceResponsibleParties?.length > 0 && (
+                              <span className="ml-2 px-2 py-0.5 text-xs bg-amber-500 text-white rounded-full">
+                                {duplicateData.serviceResponsibleParties.length} duplikat
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                        <button
+                          onClick={() => setExpandedCategories(prev => ({...prev, importServiceResponsibleParties: !prev.importServiceResponsibleParties}))}
+                          className="text-teal-600 hover:bg-teal-100 p-1 rounded"
+                        >
+                          {expandedCategories.importServiceResponsibleParties ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {expandedCategories.importServiceResponsibleParties && (
+                      <div className="bg-white p-4">
+                        {/* Search */}
+                        <div className="relative mb-3">
+                          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                          <input
+                            type="text"
+                            placeholder="Cari asosiasi (nama, telepon, alamat)..."
+                            value={importSearchTerms.serviceResponsibleParties || ''}
+                            onChange={(e) => setImportSearchTerms({...importSearchTerms, serviceResponsibleParties: e.target.value})}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        {/* Items List with Scroll */}
+                        <div className="max-h-64 overflow-y-auto space-y-1">
+                          {getFilteredImportItems('serviceResponsibleParties').map((item, originalIndex) => {
+                            // Find original index in full array
+                            const index = importData.serviceResponsibleParties.indexOf(item);
+                            const isDuplicate = duplicateData.serviceResponsibleParties?.includes(index);
+                            return (
+                              <label 
+                                key={index} 
+                                className={`flex items-center gap-2 p-2 rounded cursor-pointer ${
+                                  isDuplicate 
+                                    ? 'bg-amber-50 border border-amber-200' 
+                                    : 'hover:bg-teal-50'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={importSelection.serviceResponsibleParties?.includes(index)}
+                                  onChange={() => handleToggleImportItem('serviceResponsibleParties', index)}
+                                  className="w-4 h-4 text-teal-600 rounded"
+                                  disabled={isDuplicate}
+                                />
+                                <span className={`text-sm flex-1 ${isDuplicate ? 'text-amber-700' : 'text-gray-700'}`}>
+                                  {getImportDisplayText('serviceResponsibleParties', item)}
+                                  {isDuplicate && <span className="ml-2 text-xs font-semibold text-amber-600">[DUPLIKAT]</span>}
+                                </span>
+                              </label>
+                            );
+                          })}
+                          {getFilteredImportItems('serviceResponsibleParties').length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-4">Tidak ada data ditemukan</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Booking Names */}
+                {importData.bookingNames && importData.bookingNames.length > 0 && (
+                  <div className="border-2 border-cyan-200 rounded-xl overflow-hidden">
+                    <div className="bg-cyan-50 p-4">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-3 cursor-pointer flex-1">
+                          <input
+                            type="checkbox"
+                            checked={(() => {
+                              const nonDuplicateCount = importData.bookingNames.filter((_, idx) => !duplicateData.bookingNames?.includes(idx)).length;
+                              return nonDuplicateCount > 0 && importSelection.bookingNames?.length === nonDuplicateCount;
+                            })()}
+                            onChange={(e) => handleToggleAllImport('bookingNames', e.target.checked)}
+                            className="w-5 h-5 text-cyan-600 rounded"
+                          />
+                          <div>
+                            <span className="font-semibold text-gray-800">Data Nama Booking</span>
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-cyan-600 text-white rounded-full">
+                              {importSelection.bookingNames?.length || 0} / {importData.bookingNames.filter((_, idx) => !duplicateData.bookingNames?.includes(idx)).length} dipilih
+                            </span>
+                            {duplicateData.bookingNames?.length > 0 && (
+                              <span className="ml-2 px-2 py-0.5 text-xs bg-amber-500 text-white rounded-full">
+                                {duplicateData.bookingNames.length} duplikat
+                              </span>
+                            )}
+                            <p className="text-xs text-gray-600 mt-1">
+                              Template nama booking yang dapat digunakan kembali
+                            </p>
+                          </div>
+                        </label>
+                        <button
+                          onClick={() => setExpandedCategories(prev => ({...prev, importBookingNames: !prev.importBookingNames}))}
+                          className="text-cyan-600 hover:bg-cyan-100 p-1 rounded"
+                        >
+                          {expandedCategories.importBookingNames ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {expandedCategories.importBookingNames && (
+                      <div className="bg-white p-4">
+                        {/* Search */}
+                        <div className="relative mb-3">
+                          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                          <input
+                            type="text"
+                            placeholder="Cari nama booking..."
+                            value={importSearchTerms.bookingNames || ''}
+                            onChange={(e) => setImportSearchTerms({...importSearchTerms, bookingNames: e.target.value})}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        {/* Items List with Scroll */}
+                        <div className="max-h-64 overflow-y-auto space-y-1">
+                          {getFilteredImportItems('bookingNames').map((item, originalIndex) => {
+                            // Find original index in full array
+                            const index = importData.bookingNames.indexOf(item);
+                            const isDuplicate = duplicateData.bookingNames?.includes(index);
+                            return (
+                              <label 
+                                key={index} 
+                                title={isDuplicate ? '❌ Data ini sudah ada di sistem dan tidak dapat diimport' : 'Klik untuk memilih data ini'}
+                                className={`flex items-center gap-2 p-2 rounded ${
+                                  isDuplicate 
+                                    ? 'bg-amber-50 border border-amber-200 cursor-not-allowed' 
+                                    : 'hover:bg-cyan-50 cursor-pointer'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={importSelection.bookingNames?.includes(index)}
+                                  onChange={() => handleToggleImportItem('bookingNames', index)}
+                                  className="w-4 h-4 text-cyan-600 rounded"
+                                  disabled={isDuplicate}
+                                />
+                                <span className={`text-sm flex-1 ${isDuplicate ? 'text-amber-700' : 'text-gray-700'}`}>
+                                  {getImportDisplayText('bookingNames', item)}
+                                  {isDuplicate && <span className="ml-2 text-xs font-semibold text-amber-600">[DUPLIKAT]</span>}
+                                </span>
+                              </label>
+                            );
+                          })}
+                          {getFilteredImportItems('bookingNames').length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-4">Tidak ada data nama booking ditemukan</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Expense Categories */}
                 {importData.expenseCategories && importData.expenseCategories.length > 0 && (
                   <div className="border-2 border-pink-200 rounded-xl overflow-hidden">
@@ -3665,6 +4205,7 @@ const BackupDataPage = () => {
                     !importSelection.companySettings &&
                     (!importSelection.clients?.length) && 
                     (!importSelection.services?.length) && 
+                    (!importSelection.bookingNames?.length) &&
                     (!importSelection.bookings?.length) && 
                     (!importSelection.expenses?.length) &&
                     (!importSelection.expenseCategories?.length)
@@ -3682,6 +4223,7 @@ const BackupDataPage = () => {
                       Import {
                         (importSelection.clients?.length || 0) + 
                         (importSelection.services?.length || 0) + 
+                        (importSelection.bookingNames?.length || 0) +
                         (importSelection.bookings?.length || 0) + 
                         (importSelection.expenses?.length || 0) +
                         (importSelection.expenseCategories?.length || 0)
@@ -4082,6 +4624,80 @@ const BackupDataPage = () => {
                         ))}
                         {getFilteredItems('bookings').length === 0 && (
                           <p className="text-sm text-gray-500 text-center py-4">Tidak ada data booking ditemukan</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Booking Names with Dropdown */}
+                <div className="border border-gray-200 rounded-xl overflow-hidden hover:border-cyan-300 transition-colors">
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={exportSelection.bookingNames}
+                        onChange={(e) => handleToggleCategory('bookingNames', e.target.checked)}
+                        className="w-5 h-5 text-cyan-600 rounded focus:ring-2 focus:ring-cyan-500 mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-800">Data Nama Booking</span>
+                            <span className="px-2 py-0.5 text-xs bg-cyan-100 text-cyan-700 rounded-full">
+                              {selectedIds.bookingNames?.length || 0} / {allData.bookingNames?.length || 0} dipilih
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleToggleDropdown('bookingNames')}
+                            className="text-cyan-600 hover:bg-cyan-50 p-1 rounded"
+                          >
+                            {expandedCategories.bookingNames ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-600">Nama template booking yang dapat digunakan kembali</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {expandedCategories.bookingNames && (
+                    <div className="border-t border-gray-200 bg-gray-50 p-4">
+                      {/* Search */}
+                      <div className="relative mb-3">
+                        <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          placeholder="Cari nama booking..."
+                          value={searchTerms.bookingNames || ''}
+                          onChange={(e) => setSearchTerms({...searchTerms, bookingNames: e.target.value})}
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                        />
+                      </div>
+                      
+                      <label className="flex items-center gap-2 p-2 hover:bg-cyan-50 rounded cursor-pointer mb-2 border-b border-gray-200">
+                        <input
+                          type="checkbox"
+                          checked={(selectedIds.bookingNames?.length || 0) === (allData.bookingNames?.length || 0) && (allData.bookingNames?.length || 0) > 0}
+                          onChange={(e) => handleToggleAllInCategory('bookingNames', e.target.checked)}
+                          className="w-4 h-4 text-cyan-600 rounded"
+                        />
+                        <span className="text-sm font-semibold text-cyan-900">Pilih Semua Nama Booking</span>
+                      </label>
+                      
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {getFilteredItems('bookingNames').map(item => (
+                          <label key={item.id} className="flex items-center gap-2 p-2 hover:bg-cyan-50 rounded cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.bookingNames?.includes(item.id) || false}
+                              onChange={() => handleToggleItem('bookingNames', item.id)}
+                              className="w-4 h-4 text-cyan-600 rounded"
+                            />
+                            <span className="text-sm text-gray-700">{getDisplayText('bookingNames', item)}</span>
+                          </label>
+                        ))}
+                        {getFilteredItems('bookingNames').length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-4">Tidak ada data nama booking ditemukan</p>
                         )}
                       </div>
                     </div>

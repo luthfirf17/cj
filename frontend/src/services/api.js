@@ -66,12 +66,23 @@ api.interceptors.response.use(
         case 401:
           // Unauthorized - Token expired or invalid
           console.warn('[Auth] Token expired or invalid. Redirecting to login...');
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(USER_KEY);
           
-          // Only redirect if not already on login page
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login';
+          // Don't auto-redirect for certain endpoints
+          const skipAutoLogoutUrls = [
+            '/auth/verify',
+            '/google-calendar/'  // Google Calendar endpoints should handle their own auth errors
+          ];
+          
+          const shouldSkipLogout = skipAutoLogoutUrls.some(url => error.config?.url?.includes(url));
+          
+          if (!shouldSkipLogout) {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+            
+            // Only redirect if not already on login page
+            if (!window.location.pathname.includes('/login')) {
+              window.location.href = '/login';
+            }
           }
           break;
           

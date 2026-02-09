@@ -7,7 +7,9 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 /**
  * Generate JWT Token
  */
-const generateToken = (user) => {
+const generateToken = (user, rememberMe = false) => {
+  const expiresIn = rememberMe ? '30d' : (process.env.JWT_EXPIRES_IN || '7d');
+  
   return jwt.sign(
     {
       id: user.id,
@@ -16,7 +18,7 @@ const generateToken = (user) => {
       tenant_id: user.id // For multi-tenancy: each user is their own tenant
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { expiresIn }
   );
 };
 

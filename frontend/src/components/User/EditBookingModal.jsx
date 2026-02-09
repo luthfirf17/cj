@@ -5,7 +5,7 @@ import Input from '../Common/Input';
 import Select from '../Common/Select';
 import TextArea from '../Common/TextArea';
 import CountryCodeDropdown from '../Common/CountryCodeDropdown';
-import { FiDollarSign, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMapPin, FiMinus, FiUser, FiMessageCircle, FiChevronDown } from 'react-icons/fi';
+import { FiDollarSign, FiTrash2, FiPlus, FiSearch, FiCheck, FiEdit2, FiX, FiMapPin, FiMinus, FiUser, FiMessageCircle, FiChevronDown, FiCalendar } from 'react-icons/fi';
 import { formatPhoneForWhatsApp } from '../../utils/phoneUtils';
 import api from '../../services/api';
 import authService from '../../services/authService';
@@ -13,7 +13,9 @@ import authService from '../../services/authService';
 const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState([]);
+  const [clients, setClients] = useState([]);
   const [responsibleParties, setResponsibleParties] = useState([]);
+  const [bookingNames, setBookingNames] = useState([]);
   const [serviceResponsibleParties, setServiceResponsibleParties] = useState([]);
   const [showResponsiblePartiesDropdown, setShowResponsiblePartiesDropdown] = useState(false);
   const [showAddResponsiblePartyModal, setShowAddResponsiblePartyModal] = useState(false);
@@ -28,6 +30,8 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     address: '',
   });
   const [formData, setFormData] = useState({
+    booking_name: '',
+    client_id: '',
     client_name: '',
     contact: '',
     address: '',
@@ -62,6 +66,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
   // Multiple Services Selection State
   const [multipleSelectedServices, setMultipleSelectedServices] = useState([]);
   
+  // Booking Name Dropdown State
+  const [showBookingNameDropdown, setShowBookingNameDropdown] = useState(false);
+  
   // Client Dropdown State
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
@@ -83,14 +90,56 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     default_price: 0,
   });
 
+  // Add/Edit Client Modal State
+  const [showAddClientModal, setShowAddClientModal] = useState(false);
+  const [showEditClientModal, setShowEditClientModal] = useState(false);
+  const [clientModalData, setClientModalData] = useState({
+    id: null,
+    name: '',
+    phone: '',
+    countryCode: '62',
+    address: '',
+  });
+
   const [errors, setErrors] = useState({});
   const dropdownRefs = useRef([]);
   const serviceResponsiblePartyDropdownRefs = useRef([]);
+  const bookingNameDropdownRef = useRef(null);
   const clientDropdownRef = useRef(null);
+
+  // Google Calendar Sync State
+  const [syncToGoogleCalendar, setSyncToGoogleCalendar] = useState(false);
+  const [isGoogleCalendarConnected, setIsGoogleCalendarConnected] = useState(false);
+  const [isCheckingGoogleCalendar, setIsCheckingGoogleCalendar] = useState(false);
+  const [existingGoogleCalendarEventId, setExistingGoogleCalendarEventId] = useState(null);
 
   // Subtotal state for display purposes
   const [subtotalAmount, setSubtotalAmount] = useState(0);
   const [originalSubtotal, setOriginalSubtotal] = useState(0); // Before discount
+
+  // Check Google Calendar connection
+  const checkGoogleCalendarConnection = async () => {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user || user.auth_provider !== 'google') {
+        setIsGoogleCalendarConnected(false);
+        return;
+      }
+      
+      setIsCheckingGoogleCalendar(true);
+      const response = await api.get('/user/google-calendar/status');
+      if (response.data.success && response.data.data.connected) {
+        setIsGoogleCalendarConnected(true);
+      } else {
+        setIsGoogleCalendarConnected(false);
+      }
+    } catch (err) {
+      console.log('Google Calendar not connected:', err);
+      setIsGoogleCalendarConnected(false);
+    } finally {
+      setIsCheckingGoogleCalendar(false);
+    }
+  };
 
   // Fetch booking detail and services
   useEffect(() => {
@@ -99,9 +148,12 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       const loadData = async () => {
         setLoading(true);
         const servicesList = await fetchServices();
+        await fetchClients();
         await fetchResponsibleParties();
         await fetchServiceResponsibleParties();
+        await fetchBookingNames();
         await fetchBookingDetail(servicesList);
+        await checkGoogleCalendarConnection();
         setLoading(false);
       };
       loadData();
@@ -112,6 +164,8 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
   useEffect(() => {
     if (!isOpen) {
       setFormData({
+        booking_name: '',
+        client_id: '',
         client_name: '',
         contact: '',
         address: '',
@@ -169,6 +223,15 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         description: '',
         default_price: 0,
       });
+      setShowAddClientModal(false);
+      setShowEditClientModal(false);
+      setClientModalData({
+        id: null,
+        name: '',
+        phone: '',
+        countryCode: '62',
+        address: '',
+      });
       setShowAddResponsiblePartyModal(false);
       setShowEditResponsiblePartyModal(false);
       setResponsiblePartyModalData({
@@ -179,6 +242,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         address: '',
       });
       setErrors({});
+      // Reset Google Calendar state
+      setSyncToGoogleCalendar(false);
+      setExistingGoogleCalendarEventId(null);
     }
   }, [isOpen]);
 
@@ -300,6 +366,8 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
 
         // Use parsed details if available, otherwise fall back to legacy format
         setFormData({
+          booking_name: booking.booking_name || '',
+          client_id: booking.client_id?.toString() || '',
           client_name: booking.client_name,
           contact: booking.contact,
           address: booking.address || '',
@@ -316,19 +384,42 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
           payment_status: displayPaymentStatus,
           total_amount: parseFloat(booking.total_amount) || 0,
           amount_paid: parseFloat(booking.amount_paid) || 0,
-          discount_value: bookingDetails?.discount_value || bookingDetails?.discount || 0,
-          discount_type: bookingDetails?.discount_type || 'rupiah',
-          tax_percentage: bookingDetails?.tax_percentage || 0,
+          // Handle both old and new discount format
+          discount_value: bookingDetails?.discount?.value || bookingDetails?.discount_value || 0,
+          discount_type: bookingDetails?.discount?.type || bookingDetails?.discount_type || 'rupiah',
+          // Handle both old and new tax format
+          tax_percentage: bookingDetails?.tax?.percentage || bookingDetails?.tax_percentage || 0,
           additional_fees: bookingDetails?.additional_fees || [],
-          notes: userNotes, // Use extracted user notes
+          notes: bookingDetails?.notes || userNotes, // Use notes from bookingDetails first, fallback to userNotes
           responsible_parties: bookingDetails?.responsible_parties || [], // Load existing responsible parties
         });
+
+        console.log('✅ FormData set with booking_name:', booking.booking_name);
+        console.log('✅ Services loaded:', selectedServices.length);
+        console.log('✅ Discount:', bookingDetails?.discount);
+        console.log('✅ Tax:', bookingDetails?.tax);
+        console.log('✅ Responsible parties:', bookingDetails?.responsible_parties);
 
         // Initialize multiple selected services for checkboxes
         if (selectedServices.length > 1) {
           setMultipleSelectedServices(selectedServices.filter(s => s.service_id).map(s => s.service_id));
         } else {
           setMultipleSelectedServices([]);
+        }
+
+        // Load Google Calendar sync state from database
+        // Check both database column and notes JSON (for backward compatibility)
+        const eventIdFromDb = booking.google_calendar_event_id;
+        const eventIdFromNotes = bookingDetails?.google_calendar_event_id;
+        const finalEventId = eventIdFromDb || eventIdFromNotes;
+        
+        if (finalEventId) {
+          setExistingGoogleCalendarEventId(finalEventId);
+          setSyncToGoogleCalendar(true); // If event ID exists, sync is enabled
+          console.log('📅 Loaded existing Google Calendar event ID:', finalEventId);
+        } else {
+          setExistingGoogleCalendarEventId(null);
+          setSyncToGoogleCalendar(bookingDetails?.google_calendar_synced || false);
         }
       }
     } catch (error) {
@@ -350,6 +441,23 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       return [];
     } catch (error) {
       console.error('Error fetching services:', error);
+      return [];
+    }
+  };
+
+  const fetchClients = async () => {
+    try {
+      const response = await api.get('/user/clients');
+      
+      if (response.data.success) {
+        const clientsList = response.data.data;
+        setClients(clientsList);
+        console.log('👥 Fetched clients:', clientsList.length, 'clients');
+        return clientsList;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching clients:', error);
       return [];
     }
   };
@@ -382,11 +490,18 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         setShowResponsiblePartiesDropdown(false);
         setResponsiblePartySearch('');
       }
+
+      // Close booking name dropdown
+      if (showBookingNameDropdown && 
+          bookingNameDropdownRef.current && 
+          !bookingNameDropdownRef.current.contains(event.target)) {
+        setShowBookingNameDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [activeDropdownIndex, activeServiceResponsiblePartyDropdownIndex, showServiceDropdown, showServiceResponsiblePartyDropdown, showResponsiblePartiesDropdown]);
+  }, [activeDropdownIndex, activeServiceResponsiblePartyDropdownIndex, showServiceDropdown, showServiceResponsiblePartyDropdown, showResponsiblePartiesDropdown, showBookingNameDropdown]);
 
   // Calculate booking days from date range
   useEffect(() => {
@@ -790,6 +905,16 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     }
   };
 
+  const fetchBookingNames = async () => {
+    try {
+      const response = await api.get('/booking-names');
+      setBookingNames(response.data || []);
+    } catch (error) {
+      console.error('Error fetching booking names:', error);
+      setBookingNames([]);
+    }
+  };
+
   // Filter responsible parties based on search term
   const filteredResponsibleParties = responsibleParties.filter(party =>
     party.name.toLowerCase().includes(responsiblePartySearch.toLowerCase()) ||
@@ -816,6 +941,94 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     } catch (error) {
       console.error('Error deleting service:', error);
       alert('Gagal menghapus layanan. Silakan coba lagi.');
+    }
+  };
+
+  // Handle edit client
+  const handleEditClient = (client) => {
+    const phoneNumber = client.phone || client.contact || '';
+    // Detect country code from existing phone number
+    let detectedCode = '62'; // default Indonesia
+    if (phoneNumber.startsWith('60')) detectedCode = '60';
+    else if (phoneNumber.startsWith('65')) detectedCode = '65';
+    else if (phoneNumber.startsWith('66')) detectedCode = '66';
+    else if (phoneNumber.startsWith('63')) detectedCode = '63';
+    else if (phoneNumber.startsWith('84')) detectedCode = '84';
+    else if (phoneNumber.startsWith('95')) detectedCode = '95';
+    else if (phoneNumber.startsWith('856')) detectedCode = '856';
+    else if (phoneNumber.startsWith('855')) detectedCode = '855';
+    else if (phoneNumber.startsWith('673')) detectedCode = '673';
+    
+    // Remove country code from phone for display in input
+    let displayPhone = phoneNumber;
+    if (displayPhone.startsWith(detectedCode)) {
+      displayPhone = displayPhone.substring(detectedCode.length);
+    }
+    
+    setClientModalData({
+      id: client.id,
+      name: client.name,
+      phone: displayPhone,
+      countryCode: detectedCode,
+      address: client.address || '',
+    });
+    setShowEditClientModal(true);
+    setShowClientDropdown(false);
+  };
+
+  // Handle delete client
+  const handleDeleteClient = async (clientId) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus klien ini?')) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/user/clients/${clientId}`);
+
+      if (response.data.success) {
+        alert('Klien berhasil dihapus!');
+        fetchClients();
+        setShowClientDropdown(false);
+        setClientSearch('');
+        // If deleted client was selected, clear selection
+        if (formData.client_id === clientId.toString()) {
+          setFormData(prev => ({
+            ...prev,
+            client_id: '',
+            client_name: '',
+            contact: '',
+            address: '',
+          }));
+        }
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      alert(error.response?.data?.message || 'Gagal menghapus klien. Silakan coba lagi.');
+    }
+  };
+
+  // Handle booking name selection
+  const handleBookingNameSelect = (bookingName) => {
+    setFormData(prev => ({ ...prev, booking_name: bookingName.name }));
+    setShowBookingNameDropdown(false);
+  };
+
+  // Handle delete booking name
+  const handleDeleteBookingName = async (bookingNameId) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus nama booking ini?')) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/booking-names/${bookingNameId}`);
+      alert('Nama booking berhasil dihapus!');
+      fetchBookingNames(); // Refresh list
+      setShowBookingNameDropdown(false);
+    } catch (error) {
+      console.error('Error deleting booking name:', error);
+      alert('Gagal menghapus nama booking. Silakan coba lagi.');
     }
   };
 
@@ -885,6 +1098,107 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Function to sync booking to Google Calendar
+  const syncBookingToGoogleCalendar = async () => {
+    try {
+      // Get service names for event title
+      const serviceNames = formData.selected_services
+        .filter(s => s.service_id)
+        .map(s => services.find(srv => srv.id === parseInt(s.service_id))?.name || '')
+        .filter(name => name)
+        .join(', ');
+      
+      const clientName = formData.client_name || 
+        clients.find(c => c.id === parseInt(formData.client_id))?.name || 'Klien';
+      
+      const bookingName = formData.booking_name || '';
+      const locationName = formData.location_name || '';
+      
+      // Build event title with format: "Booking Name: Client Name - Location Name"
+      // If no booking name: "Client Name - Location Name"
+      let eventTitle;
+      if (bookingName) {
+        eventTitle = `${bookingName}: ${clientName}${locationName ? ' - ' + locationName : ''}`;
+      } else {
+        eventTitle = `${clientName}${locationName ? ' - ' + locationName : ''}`;
+      }
+      
+      // Build event description
+      let description = `🎯 Booking CatatJasamu\n\n`;
+      description += `👤 Klien: ${clientName}\n`;
+      if (formData.contact) description += `📱 Kontak: ${formData.contact}\n`;
+      if (formData.location_name) description += `📍 Lokasi: ${formData.location_name}\n`;
+      if (formData.location_map_url) description += `🗺️ Map: ${formData.location_map_url}\n`;
+      description += `\n💰 Total: Rp ${formData.total_amount.toLocaleString('id-ID')}\n`;
+      description += `💳 Status Pembayaran: ${formData.payment_status}\n`;
+      description += `📋 Status Booking: ${formData.status}\n`;
+      if (formData.notes) description += `\n📝 Catatan: ${formData.notes}`;
+      
+      // CRITICAL FIX: Format dates WITHOUT timezone conversion
+      // Problem: new Date() + toISOString() causes timezone shift
+      // Solution: Build RFC3339 string directly
+      const startDate = formData.booking_date; // "2025-05-15"
+      const startTime = formData.booking_time || '09:00'; // "10:00"
+      const endDate = formData.booking_date_end || formData.booking_date;
+      const endTime = formData.booking_time_end || '17:00';
+      
+      // Build RFC3339 format: YYYY-MM-DDTHH:MM:SS+07:00
+      // This prevents timezone conversion issues
+      const startDateTime = `${startDate}T${startTime}:00+07:00`;
+      const endDateTime = `${endDate}T${endTime}:00+07:00`;
+      
+      console.log('📅 Syncing to Google Calendar:', {
+        startDate,
+        startTime,
+        startDateTime,
+        endDateTime,
+        existingEventId: existingGoogleCalendarEventId
+      });
+      
+      const eventData = {
+        summary: eventTitle,
+        description: description,
+        startDateTime: startDateTime,
+        endDateTime: endDateTime,
+        location: formData.location_name || '',
+        timeZone: 'Asia/Jakarta',
+        bookingId: bookingId // Send booking ID to backend for event ID storage
+      };
+      
+      let response;
+      if (existingGoogleCalendarEventId) {
+        // Update existing event
+        console.log('📝 Updating existing event:', existingGoogleCalendarEventId);
+        response = await api.put(`/user/google-calendar/events/${existingGoogleCalendarEventId}`, eventData);
+      } else {
+        // Create new event
+        console.log('➕ Creating new event');
+        response = await api.post('/user/google-calendar/events', eventData);
+      }
+      
+      if (response.data.success) {
+        const eventId = response.data.data?.id || response.data.data?.event?.id;
+        console.log('✅ Booking synced to Google Calendar. Event ID:', eventId);
+        
+        // Update local state
+        if (eventId && !existingGoogleCalendarEventId) {
+          setExistingGoogleCalendarEventId(eventId);
+        }
+        
+        return response.data.data;
+      } else {
+        console.error('❌ Failed to sync to Google Calendar:', response.data.message);
+        return null;
+      }
+    } catch (err) {
+      console.error('❌ Error syncing to Google Calendar:', err);
+      if (err.response?.data?.message) {
+        console.error('Backend error:', err.response.data.message);
+      }
+      return null;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -924,7 +1238,9 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
         additional_fees: formData.additional_fees,
         payment_status: formData.payment_status,
         amount_paid: formData.amount_paid,
-        responsible_parties: formData.responsible_parties, // Add responsible parties
+        responsible_parties: formData.responsible_parties,
+        google_calendar_synced: syncToGoogleCalendar,
+        google_calendar_event_id: existingGoogleCalendarEventId,
       };
       
       // Convert Indonesian status back to English for backend
@@ -940,6 +1256,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       else if (formData.payment_status === 'Belum Bayar') backendPaymentStatus = 'unpaid';
       
       const response = await api.put(`/user/bookings/${bookingId}`, {
+        booking_name: formData.booking_name || null,
         service_id: validServiceId, // Use validated service_id or null
         booking_date: formData.booking_date,
         booking_time: formData.booking_time,
@@ -953,7 +1270,61 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       });
 
       if (response.data.success) {
-        alert('Booking berhasil diupdate!');
+        // Auto-save booking name if it doesn't exist in database
+        if (formData.booking_name && formData.booking_name.trim() !== '') {
+          const trimmedName = formData.booking_name.trim();
+          const existingBookingName = bookingNames.find(bn => 
+            bn.name.toLowerCase() === trimmedName.toLowerCase()
+          );
+          
+          if (!existingBookingName) {
+            try {
+              await api.post('/booking-names', { name: trimmedName });
+              // Refresh booking names list
+              fetchBookingNames();
+            } catch (error) {
+              console.error('Error auto-saving booking name:', error);
+              // Don't block the booking update if saving booking name fails
+            }
+          }
+        }
+
+        // Sync to Google Calendar if enabled
+        if (syncToGoogleCalendar && isGoogleCalendarConnected) {
+          const calendarEvent = await syncBookingToGoogleCalendar();
+          if (calendarEvent) {
+            // Save event ID to database for future updates
+            const eventId = calendarEvent.id || calendarEvent.event?.id;
+            if (eventId) {
+              try {
+                await api.patch(`/user/bookings/${bookingId}/google-event`, {
+                  google_calendar_event_id: eventId
+                });
+                console.log('✅ Event ID saved to database:', eventId);
+              } catch (saveErr) {
+                console.error('⚠️ Failed to save event ID:', saveErr);
+              }
+            }
+            alert('Booking berhasil diupdate dan disinkronkan ke Google Calendar!');
+          } else {
+            alert('Booking berhasil diupdate, tapi gagal sinkron ke Google Calendar.');
+          }
+        } else if (existingGoogleCalendarEventId && !syncToGoogleCalendar) {
+          // User disabled sync - delete from Google Calendar
+          try {
+            await api.delete(`/user/google-calendar/events/${existingGoogleCalendarEventId}`);
+            await api.patch(`/user/bookings/${bookingId}/google-event`, {
+              google_calendar_event_id: null
+            });
+            setExistingGoogleCalendarEventId(null);
+            console.log('✅ Event removed from Google Calendar');
+          } catch (delErr) {
+            console.error('⚠️ Failed to remove from calendar:', delErr);
+          }
+          alert('Booking berhasil diupdate!');
+        } else {
+          alert('Booking berhasil diupdate!');
+        }
         onSuccess();
         onClose();
       } else {
@@ -986,25 +1357,273 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Client Info (Read Only) */}
+        {/* Booking Name (Optional) */}
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Informasi Klien</h3>
-          <div className="bg-blue-50 p-4 rounded-lg space-y-2 border border-blue-200">
-            <div className="flex items-start gap-2">
-              <span className="text-sm font-medium text-gray-600 w-20">Nama:</span>
-              <span className="text-sm text-gray-900 font-medium">{formData.client_name}</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-sm font-medium text-gray-600 w-20">Kontak:</span>
-              <span className="text-sm text-gray-900">{formData.contact}</span>
-            </div>
-            {formData.address && (
-              <div className="flex items-start gap-2">
-                <span className="text-sm font-medium text-gray-600 w-20">Alamat:</span>
-                <span className="text-sm text-gray-900">{formData.address}</span>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Nama Booking (Opsional)</h3>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nama Booking
+            </label>
+            
+            {/* Combined Input and Dropdown for Booking Name */}
+            <div className="relative" ref={bookingNameDropdownRef}>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={formData.booking_name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, booking_name: e.target.value }))}
+                  placeholder="Ketik nama booking baru atau pilih dari daftar tersimpan"
+                  className="pr-10"
+                  onFocus={() => setShowBookingNameDropdown(true)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowBookingNameDropdown(!showBookingNameDropdown)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
               </div>
-            )}
+
+              {/* Dropdown Menu */}
+              {showBookingNameDropdown && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowBookingNameDropdown(false)}
+                  />
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {/* Search/Input Field */}
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="relative">
+                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <input
+                          type="text"
+                          value={formData.booking_name}
+                          onChange={(e) => setFormData(prev => ({ ...prev, booking_name: e.target.value }))}
+                          placeholder="Cari nama booking tersimpan..."
+                          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Booking Name List - Show only if there are saved names */}
+                    {bookingNames.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto">
+                        <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50">
+                          Nama Booking Tersimpan
+                        </div>
+                        {bookingNames.filter(bn => 
+                          bn.name.toLowerCase().includes(formData.booking_name.toLowerCase())
+                        ).slice(0, 4).map(bookingName => (
+                          <div
+                            key={bookingName.id}
+                            className="hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex items-center gap-2 px-3 py-2">
+                              {/* Booking Name - Clickable */}
+                              <button
+                                type="button"
+                                onClick={() => handleBookingNameSelect(bookingName)}
+                                className="flex-1 flex items-center gap-2 text-left"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {bookingName.name}
+                                  </p>
+                                </div>
+                              </button>
+
+                              {/* Delete Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteBookingName(bookingName.id);
+                                }}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Hapus nama booking"
+                              >
+                                <FiTrash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Client Information */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Informasi Klien</h3>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Pilih Klien
+            </label>
+            
+            {/* Custom Client Dropdown */}
+            <div className="relative" ref={clientDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setShowClientDropdown(!showClientDropdown)}
+                className="w-full px-3 py-2.5 text-left bg-white border border-gray-300 rounded-lg hover:border-blue-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors flex items-center justify-between"
+              >
+                <span className={formData.client_name ? 'text-gray-900' : 'text-gray-400'}>
+                  {formData.client_name || 'Pilih klien atau tambah klien baru'}
+                </span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Dropdown Menu */}
+              {showClientDropdown && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowClientDropdown(false)}
+                  />
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {/* Search Input */}
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="relative">
+                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <input
+                          type="text"
+                          value={clientSearch}
+                          onChange={(e) => setClientSearch(e.target.value)}
+                          placeholder="Cari klien atau ketik untuk menambah..."
+                          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Client List */}
+                    <div className="max-h-60 overflow-y-auto">
+                      {clients.filter(c => 
+                        c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                        (c.phone && c.phone.includes(clientSearch))
+                      ).length > 0 ? (
+                        clients.filter(c => 
+                          c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                          (c.phone && c.phone.includes(clientSearch))
+                        ).map(client => (
+                          <div
+                            key={client.id}
+                            className="hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex items-center gap-2 px-3 py-2">
+                              {/* Client Info - Clickable */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    client_id: client.id.toString(),
+                                    client_name: client.name,
+                                    contact: client.phone || client.contact || '',
+                                    address: client.address || '',
+                                  }));
+                                  setShowClientDropdown(false);
+                                  setClientSearch('');
+                                }}
+                                className="flex-1 text-left flex items-center justify-between min-w-0"
+                              >
+                                <div className="flex-1 min-w-0 pr-3">
+                                  <div className="text-sm font-medium text-gray-900 truncate">{client.name}</div>
+                                  {client.phone && (
+                                    <div className="text-xs text-gray-500 mt-0.5 truncate">{client.phone}</div>
+                                  )}
+                                  {client.address && (
+                                    <div className="text-xs text-gray-400 mt-0.5 truncate">{client.address}</div>
+                                  )}
+                                </div>
+                                {formData.client_id === client.id.toString() && (
+                                  <FiCheck className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                )}
+                              </button>
+                              
+                              {/* Edit & Delete buttons */}
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditClient(client);
+                                  }}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                  title="Edit klien"
+                                >
+                                  <FiEdit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteClient(client.id);
+                                  }}
+                                  className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors"
+                                  title="Hapus klien"
+                                >
+                                  <FiTrash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-8 text-center text-gray-500 text-sm">
+                          Tidak ada klien ditemukan
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Add New Client Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddClientModal(true);
+                        setShowClientDropdown(false);
+                      }}
+                      className="w-full px-3 py-3 text-left border-t border-gray-100 bg-blue-50 hover:bg-blue-100 transition-colors flex items-center gap-2 text-blue-600 font-medium"
+                    >
+                      <FiPlus className="w-4 h-4" />
+                      <span className="text-sm">Tambah Klien Baru</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Display selected client info */}
+          {formData.client_name && (
+            <div className="space-y-3 mt-3">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <FiUser className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900">{formData.client_name}</div>
+                    <div className="text-sm text-gray-600 mt-1">{formData.contact}</div>
+                    {formData.address && (
+                      <div className="text-sm text-gray-500 mt-1">{formData.address}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Booking Information */}
@@ -1170,7 +1789,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 );
 
                 return (
-                  <div key={index} className="space-y-2">
+                  <div key={service.service_id || `service-${index}`} className="space-y-2">
                     <div className="flex items-start gap-2">
                       <div className="flex-1">
                         <label className="block text-xs text-gray-600 mb-1">
@@ -1826,7 +2445,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
             ) : (
               <div className="space-y-3">
                 {formData.additional_fees.map((fee, index) => (
-                  <div key={index} className="flex items-center gap-2">
+                  <div key={`fee-${index}-${fee.description || 'unnamed'}`} className="flex items-center gap-2">
                     <div className="flex-1">
                       <input
                         type="text"
@@ -1928,7 +2547,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 const quantity = service.quantity || 1;
                 const totalPrice = price * quantity;
                 return (
-                  <div key={index} className="flex justify-between text-sm">
+                  <div key={service.service_id || `service-breakdown-${index}`} className="flex justify-between text-sm">
                     <span className="text-gray-700">
                       {srv.name} {quantity > 1 ? `(x${quantity})` : ''}:
                     </span>
@@ -2006,7 +2625,7 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                 {formData.additional_fees.map((fee, index) => {
                   if (!fee.amount || fee.amount === 0) return null;
                   return (
-                    <div key={index} className="flex justify-between text-sm">
+                    <div key={`fee-breakdown-${index}-${fee.description || 'unnamed'}`} className="flex justify-between text-sm">
                       <span className="text-gray-700">{fee.description || 'Biaya Tambahan'}:</span>
                       <span className="text-gray-900 font-medium">Rp {parseFloat(fee.amount).toLocaleString('id-ID')}</span>
                     </div>
@@ -2206,6 +2825,55 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
             placeholder="Tambahkan catatan tambahan (opsional)"
             rows={3}
           />
+        </div>
+
+        {/* Google Calendar Sync */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isGoogleCalendarConnected ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                <FiCalendar className={`w-5 h-5 ${isGoogleCalendarConnected ? 'text-blue-600' : 'text-gray-400'}`} />
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900">Sinkronkan ke Google Calendar</h4>
+                <p className="text-sm text-gray-500">
+                  {isCheckingGoogleCalendar ? (
+                    'Memeriksa koneksi...'
+                  ) : isGoogleCalendarConnected ? (
+                    existingGoogleCalendarEventId 
+                      ? 'Perbarui event di Google Calendar Anda' 
+                      : 'Buat event booking di Google Calendar Anda'
+                  ) : (
+                    'Hubungkan Google Calendar terlebih dahulu'
+                  )}
+                </p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={syncToGoogleCalendar}
+                onChange={(e) => setSyncToGoogleCalendar(e.target.checked)}
+                disabled={!isGoogleCalendarConnected || isCheckingGoogleCalendar}
+                className="sr-only peer"
+              />
+              <div className={`w-11 h-6 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 
+                ${isGoogleCalendarConnected ? 'bg-gray-200 peer-checked:bg-blue-600' : 'bg-gray-300 cursor-not-allowed'}
+                after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 
+                after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full`}>
+              </div>
+            </label>
+          </div>
+          {syncToGoogleCalendar && isGoogleCalendarConnected && (
+            <div className="mt-3 pt-3 border-t border-blue-200">
+              <p className="text-xs text-blue-700 flex items-center gap-1">
+                <FiCheck className="w-3 h-3" />
+                {existingGoogleCalendarEventId 
+                  ? 'Event akan diperbarui di Google Calendar setelah booking disimpan'
+                  : 'Event akan dibuat di Google Calendar setelah booking disimpan'}
+              </p>
+            </div>
+          )}
         </div>
       </form>
       </Modal>
@@ -2414,6 +3082,137 @@ const EditBookingModal = ({ isOpen, onClose, onSuccess, bookingId }) => {
                   } catch (error) {
                     console.error('Error updating service:', error);
                     alert('Gagal mengupdate layanan. Silakan coba lagi.');
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Simpan Perubahan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {showEditClientModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm sm:max-w-md w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Klien</h3>
+              <button
+                onClick={() => {
+                  setShowEditClientModal(false);
+                  setClientModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <FiX className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nama Klien <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={clientModalData.name}
+                  onChange={(e) => setClientModalData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Masukkan nama klien..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nomor Telepon/WA <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <CountryCodeDropdown
+                    value={clientModalData.countryCode}
+                    onChange={(code) => setClientModalData(prev => ({ ...prev, countryCode: code }))}
+                  />
+                  <input
+                    type="tel"
+                    value={clientModalData.phone}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9+]/g, '');
+                      setClientModalData(prev => ({ ...prev, phone: value }));
+                    }}
+                    placeholder="8123456789"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Format: 8xxx (tanpa 0 di depan) atau 08xxx
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Alamat (opsional)
+                </label>
+                <textarea
+                  value={clientModalData.address}
+                  onChange={(e) => setClientModalData(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Masukkan alamat klien..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowEditClientModal(false);
+                  setClientModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={async () => {
+                  if (!clientModalData.name.trim() || !clientModalData.phone.trim()) {
+                    alert('Nama klien dan nomor telepon wajib diisi!');
+                    return;
+                  }
+
+                  try {
+                    // Format phone number with country code for WhatsApp
+                    const formattedPhone = formatPhoneForWhatsApp(clientModalData.phone, clientModalData.countryCode);
+                    
+                    const response = await api.put(`/user/clients/${clientModalData.id}`, {
+                      name: clientModalData.name,
+                      phone: formattedPhone, // Save formatted phone
+                      address: clientModalData.address,
+                    });
+
+                    if (response.data.success) {
+                      alert('Klien berhasil diupdate!');
+                      fetchClients();
+                      setShowEditClientModal(false);
+                      setClientModalData({ id: null, name: '', phone: '', countryCode: '62', address: '' });
+                      // Update form if edited client was selected
+                      if (formData.client_id === clientModalData.id.toString()) {
+                        setFormData(prev => ({
+                          ...prev,
+                          client_name: clientModalData.name,
+                          contact: formattedPhone,
+                          address: clientModalData.address,
+                        }));
+                      }
+                    } else {
+                      throw new Error(response.data.message);
+                    }
+                  } catch (error) {
+                    console.error('Error updating client:', error);
+                    alert('Gagal mengupdate klien. Silakan coba lagi.');
                   }
                 }}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"

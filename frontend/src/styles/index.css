@@ -17,3 +17,476 @@
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* Mobile Sidebar Menu Animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes menuItemSlideIn {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rippleEffect {
+  0% {
+    transform: scale(0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
+.animate-slideOutRight {
+  animation: slideOutRight 0.3s ease-out forwards;
+}
+
+.animate-menuItem {
+  animation: menuItemSlideIn 0.3s ease-out forwards;
+}
+
+/* Mobile menu button touch feedback */
+.mobile-menu-btn {
+  @apply relative overflow-hidden;
+}
+
+.mobile-menu-btn::after {
+  content: '';
+  @apply absolute inset-0 bg-white/30 opacity-0 transition-opacity duration-200;
+  border-radius: inherit;
+}
+
+.mobile-menu-btn:active::after {
+  @apply opacity-100;
+}
+
+/* Menu item press animation */
+.menu-item-press {
+  @apply transition-all duration-150 ease-out;
+}
+
+.menu-item-press:active {
+  @apply scale-[0.98];
+}
+
+/* Custom scrollbar for mobile menu */
+.mobile-menu-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.mobile-menu-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mobile-menu-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.mobile-menu-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Custom scrollbar for desktop sidebar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Sidebar ball button animation */
+@keyframes ballBounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.85);
+  }
+}
+
+@keyframes ballPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+.sidebar-ball-btn {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-ball-btn:hover {
+  transform: scale(1.08);
+}
+
+.sidebar-ball-btn:active {
+  animation: ballBounce 0.3s ease-out;
+}
+
+.sidebar-ball-btn.active {
+  animation: ballPulse 0.6s ease-out;
+}
+
+/* Sidebar icon transition */
+.sidebar-icon {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-icon:hover {
+  transform: scale(1.15);
+}
+
+/* Custom FullCalendar styling to match Google Calendar */
+.fc {
+  font-family: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.fc-header-toolbar {
+  margin-bottom: 16px !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.fc-button {
+  background-color: #ffffff !important;
+  border: 1px solid #dadce0 !important;
+  color: #3c4043 !important;
+  font-weight: 500 !important;
+  padding: 8px 16px !important;
+  border-radius: 6px !important;
+  font-size: 14px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: none !important;
+}
+
+.fc-button:hover {
+  background-color: #f8f9fa !important;
+  border-color: #bdc1c6 !important;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.08) !important;
+}
+
+.fc-button:not(:disabled).fc-button-active,
+.fc-button:not(:disabled):active {
+  background-color: #e8f0fe !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.08) !important;
+}
+
+.fc-button:focus {
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2) !important;
+  outline: none !important;
+}
+
+.fc-toolbar-title {
+  font-size: 22px !important;
+  font-weight: 400 !important;
+  color: #3c4043 !important;
+  margin: 0 !important;
+}
+
+.fc-daygrid-day,
+.fc-timegrid-slot {
+  border-color: #e8eaed !important;
+}
+
+.fc-daygrid-day:hover {
+  background-color: #f8f9fa !important;
+}
+
+.fc-day-today {
+  background-color: #e8f0fe !important;
+}
+
+.fc-day-today .fc-daygrid-day-number {
+  background-color: #1a73e8 !important;
+  color: white !important;
+  border-radius: 50% !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 500 !important;
+}
+
+.fc-event {
+  border-radius: 4px !important;
+  border: none !important;
+  padding: 2px 6px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  margin-bottom: 1px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 16px !important;
+  min-height: 16px !important;
+}
+
+.fc-event:hover {
+  opacity: 0.8 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.fc-event-title {
+  font-weight: 500 !important;
+  font-size: 12px !important;
+}
+
+.fc-col-header {
+  background-color: #f8f9fa !important;
+  border-bottom: 1px solid #e8eaed !important;
+}
+
+.fc-col-header-cell {
+  font-weight: 500 !important;
+  color: #3c4043 !important;
+  padding: 12px 8px !important;
+  font-size: 14px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.fc-daygrid-day-number {
+  padding: 8px !important;
+  font-weight: 400 !important;
+  color: #3c4043 !important;
+  font-size: 14px !important;
+  margin-bottom: 4px !important;
+}
+
+.fc-daygrid-day-top {
+  justify-content: flex-start !important;
+  align-items: flex-start !important;
+  padding: 4px 8px 0 !important;
+}
+
+.fc-timegrid-axis {
+  color: #5f6368 !important;
+  font-weight: 400 !important;
+  font-size: 12px !important;
+}
+
+.fc-timegrid-slot {
+  height: 48px !important;
+  border-color: #e8eaed !important;
+}
+
+.fc-timegrid-slot-minor {
+  border-top-style: dashed !important;
+  border-color: #dadce0 !important;
+}
+
+.fc-list-event {
+  border-radius: 8px !important;
+  margin-bottom: 4px !important;
+  border-left: 4px solid !important;
+}
+
+.fc-list-event:hover {
+  background-color: #f8f9fa !important;
+}
+
+.fc-list-event-dot {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  margin-right: 8px !important;
+}
+
+.fc-list-event-time {
+  font-weight: 500 !important;
+  color: #5f6368 !important;
+}
+
+.fc-list-event-title {
+  font-weight: 500 !important;
+  color: #3c4043 !important;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .fc-header-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 0 8px;
+  }
+
+  .fc-toolbar-chunk {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+
+  .fc-button {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px !important;
+    padding: 6px 12px !important;
+    height: 32px !important;
+  }
+
+  .fc-toolbar-title {
+    font-size: 18px !important;
+    text-align: center;
+  }
+
+  .fc-daygrid-day-number {
+    padding: 4px !important;
+    font-size: 13px !important;
+  }
+
+  .fc-event {
+    font-size: 11px !important;
+    padding: 1px 4px !important;
+    min-height: 14px !important;
+    line-height: 14px !important;
+  }
+
+  .fc-col-header-cell {
+    padding: 8px 4px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* Week/Day view improvements */
+.fc-timegrid-divider {
+  border-color: #e8eaed !important;
+}
+
+.fc-timegrid-slot-label {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  font-weight: 400 !important;
+}
+
+.fc-timegrid-event {
+  border-radius: 4px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* More events link styling */
+.fc-daygrid-more-link {
+  color: #5f6368 !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  padding: 2px 4px !important;
+  border-radius: 3px !important;
+  background-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.fc-daygrid-more-link:hover {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #1a73e8 !important;
+}
+
+/* Popover styling for more events */
+.fc-popover {
+  background-color: white !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+}
+
+.fc-popover-header {
+  background-color: #f8f9fa !important;
+  border-bottom: 1px solid #e8eaed !important;
+  padding: 12px 16px !important;
+  font-weight: 500 !important;
+  color: #3c4043 !important;
+  border-radius: 8px 8px 0 0 !important;
+}
+
+.fc-popover-body {
+  padding: 8px 0 !important;
+}
+/* Custom Scrollbar for Service List */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 #F1F5F9;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
