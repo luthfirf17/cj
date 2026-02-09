@@ -5,6 +5,9 @@ const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
+const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 require('dotenv').config();
 
 // Import database connection
@@ -13,16 +16,37 @@ const { query } = require('./config/database');
 // Import routes
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/admin/adminRoutes');
+const userRoutes = require('./routes/user/userRoutes');
 
 // Import authentication middleware
 const { authenticate, enforceTenancy } = require('./middlewares/authMiddleware');
 
 const app = express();
 
+// Allowed origins for CORS
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://catatjasamu.com',
+  'https://www.catatjasamu.com',
+  'https://api.catatjasamu.com',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      // For public endpoints, allow any origin
+      callback(null, true);
+    }
+  },
   credentials: true
 }));
 app.use(morgan('dev'));
@@ -43,6 +67,313 @@ const limiter = rateLimit({
 if (process.env.NODE_ENV === 'production') {
   app.use('/api/', limiter);
 }
+
+// Security headers to prevent caching of sensitive data
+app.use((req, res, next) => {
+  // Prevent caching of API responses for authenticated routes
+  if (req.path.startsWith('/api/user') || req.path.startsWith('/api/admin')) {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Surrogate-Control': 'no-store'
+    });
+  }
+  next();
+});
+
+// ====================================
+// PASSPORT CONFIGURATION
+// ====================================
+
+// Session middleware for Passport
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'catat-jasamu-session-secret-2025',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Passport middleware
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Passport Google OAuth Strategy
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5001/api/auth/google/callback'
+}, async (accessToken, refreshToken, profile, done) => {
+  try {
+    console.log('Google OAuth profile:', profile);
+
+    const googleId = profile.id;
+    const email = profile.emails[0].value;
+    
+    // Build full name from Google profile
+    let fullName = profile.displayName;
+    if (profile.name) {
+      const givenName = profile.name.givenName;
+      const familyName = profile.name.familyName;
+      if (givenName && familyName) {
+        fullName = `${givenName} ${familyName}`;
+      } else if (givenName) {
+        fullName = givenName;
+      } else if (familyName) {
+        fullName = familyName;
+      }
+    }
+    
+    const profilePictureUrl = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
+
+    // Check if user already exists with this Google ID
+    let userResult = await query(
+      'SELECT * FROM users WHERE google_id = $1',
+      [googleId]
+    );
+
+    if (userResult.rows.length > 0) {
+      // User exists with Google ID, update profile picture if changed
+      const existingUser = userResult.rows[0];
+      await query(
+        `UPDATE users SET 
+          avatar_url = $1,
+          google_email = $2,
+          updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $3`,
+        [profilePictureUrl, email, existingUser.id]
+      );
+      
+      // Fetch updated user
+      const updatedUser = await query('SELECT * FROM users WHERE id = $1', [existingUser.id]);
+      return done(null, updatedUser.rows[0]);
+    }
+
+    // Check if user exists with same email
+    userResult = await query(
+      'SELECT * FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (userResult.rows.length > 0) {
+      // Link Google account to existing user
+      const existingUser = userResult.rows[0];
+      await query(
+        `UPDATE users SET 
+          google_id = $1, 
+          avatar_url = $2, 
+          google_email = $3,
+          auth_provider = $4,
+          updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $5`,
+        [googleId, profilePictureUrl, email, 'google', existingUser.id]
+      );
+
+      // Fetch updated user
+      const updatedUser = await query(
+        'SELECT * FROM users WHERE id = $1',
+        [existingUser.id]
+      );
+
+      return done(null, updatedUser.rows[0]);
+    }
+
+    // Create new user
+    const username = email.split('@')[0].toLowerCase();
+    const insertResult = await query(
+      `INSERT INTO users (
+        username, full_name, email, google_id, google_email, avatar_url, auth_provider,
+        role, is_active, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW())
+      RETURNING *`,
+      [username, fullName, email, googleId, email, profilePictureUrl, 'google', 'user']
+    );
+
+    return done(null, insertResult.rows[0]);
+
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    return done(error, null);
+  }
+}));
+
+// Serialize user for session
+passport.serializeUser((user, done) => {
+  done(null, user.id);
+});
+
+// Deserialize user from session
+passport.deserializeUser(async (id, done) => {
+  try {
+    const result = await query('SELECT * FROM users WHERE id = $1', [id]);
+    if (result.rows.length > 0) {
+      done(null, result.rows[0]);
+    } else {
+      done(new Error('User not found'), null);
+    }
+  } catch (error) {
+    done(error, null);
+  }
+});
+
+// ====================================
+// FAVICON ROUTE
+// ====================================
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); // No Content - browser won't show error
+});
+
+// GOOGLE OAUTH ROUTES
+// ====================================
+
+// Check if email exists (for Google OAuth validation)
+// Used by frontend to determine if user should login or register
+app.get('/api/auth/check-email', async (req, res) => {
+  try {
+    const { email } = req.query;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const result = await query(
+      'SELECT id, email, auth_provider FROM users WHERE email = $1 OR google_email = $1',
+      [email.toLowerCase()]
+    );
+
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      return res.json({
+        success: true,
+        exists: true,
+        auth_provider: user.auth_provider,
+        message: 'User exists'
+      });
+    }
+
+    return res.json({
+      success: true,
+      exists: false,
+      message: 'User not found'
+    });
+  } catch (error) {
+    console.error('Error checking email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check email'
+    });
+  }
+});
+
+// Google OAuth login route - for existing users
+app.get('/api/auth/google/login',
+  (req, res, next) => {
+    // Store action type in session
+    req.session.googleAction = 'login';
+    next();
+  },
+  passport.authenticate('google', { 
+    scope: [
+      'profile', 
+      'email',
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ]
+  })
+);
+
+// Google OAuth register route - for new users
+app.get('/api/auth/google/register',
+  (req, res, next) => {
+    // Store action type in session
+    req.session.googleAction = 'register';
+    next();
+  },
+  passport.authenticate('google', { 
+    scope: [
+      'profile', 
+      'email',
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ]
+  })
+);
+
+// Keep original route for backward compatibility
+app.get('/api/auth/google',
+  passport.authenticate('google', { 
+    scope: [
+      'profile', 
+      'email',
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ]
+  })
+);
+
+// Google OAuth callback route
+app.get('/api/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login?error=oauth_failed' }),
+  async (req, res) => {
+    try {
+      console.log('OAuth callback successful, user:', req.user);
+      
+      const googleAction = req.session.googleAction || 'login';
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      
+      // Check if this is a new user (created just now) or existing
+      const isNewUser = req.user.created_at && 
+        (new Date() - new Date(req.user.created_at)) < 10000; // Created within last 10 seconds
+      
+      console.log('Google Action:', googleAction, 'Is New User:', isNewUser);
+      
+      // Validation: If trying to login but user is new (doesn't exist), redirect to register
+      if (googleAction === 'login' && isNewUser) {
+        // Delete the just-created user since they should register first
+        await query('DELETE FROM users WHERE id = $1', [req.user.id]);
+        console.log('User tried to login but account does not exist, deleted temp user');
+        return res.redirect(`${frontendUrl}/register?error=not_registered&email=${encodeURIComponent(req.user.email)}&message=Akun%20belum%20terdaftar.%20Silakan%20daftar%20terlebih%20dahulu.`);
+      }
+      
+      // Validation: If trying to register but user already existed, redirect to login
+      if (googleAction === 'register' && !isNewUser) {
+        console.log('User tried to register but account already exists');
+        return res.redirect(`${frontendUrl}/login?error=already_registered&email=${encodeURIComponent(req.user.email)}&message=Akun%20sudah%20terdaftar.%20Silakan%20login.`);
+      }
+
+      // Clear the action from session
+      delete req.session.googleAction;
+
+      // Generate JWT token for the authenticated user
+      const jwt = require('jsonwebtoken');
+      const token = jwt.sign(
+        {
+          id: req.user.id,
+          email: req.user.email,
+          role: req.user.role,
+          provider: 'google'
+        },
+        process.env.JWT_SECRET || 'catat-jasamu-jwt-secret-2025',
+        { expiresIn: '7d' }
+      );
+
+      // Redirect to frontend with token and provider info
+      const redirectUrl = `${frontendUrl}/login?token=${token}&provider=google&success=true&openCalendar=true`;
+
+      console.log('Redirecting to:', redirectUrl);
+      res.redirect(redirectUrl);
+
+    } catch (error) {
+      console.error('OAuth callback error:', error);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      res.redirect(`${frontendUrl}/login?error=oauth_error`);
+    }
+  }
+);
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -104,19 +435,33 @@ app.use('/api/auth', authRoutes);
 // Mount admin routes
 app.use('/api/admin', adminRoutes);
 
+// Mount user routes
+app.use('/api/user', userRoutes);
+
 // Real endpoints with database
 app.get('/api/user/dashboard/stats', authenticate, enforceTenancy, async (req, res) => {
   try {
     const userId = req.user.id; // Get from authenticated user
+    const { month, year } = req.query;
+    
+    // Build date filter for month/year if provided
+    let dateFilter = '';
+    const params = [userId];
+    let paramIndex = 2;
+    
+    if (month && year) {
+      dateFilter = ` AND EXTRACT(MONTH FROM b.booking_date) = $${paramIndex}::int AND EXTRACT(YEAR FROM b.booking_date) = $${paramIndex + 1}::int`;
+      params.push(parseInt(month), parseInt(year));
+    }
     
     const statsQuery = `
       SELECT 
         COUNT(*) as total_booking,
-        COUNT(*) FILTER (WHERE status = 'confirmed') as scheduled,
-        COUNT(*) FILTER (WHERE status = 'completed') as completed,
-        COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
-      FROM bookings
-      WHERE user_id = $1
+        COUNT(*) FILTER (WHERE b.status = 'confirmed') as scheduled,
+        COUNT(*) FILTER (WHERE b.status = 'completed') as completed,
+        COUNT(*) FILTER (WHERE b.status = 'cancelled') as cancelled
+      FROM bookings b
+      WHERE b.user_id = $1 ${dateFilter}
     `;
     
     const paymentQuery = `
@@ -126,11 +471,11 @@ app.get('/api/user/dashboard/stats', authenticate, enforceTenancy, async (req, r
         COUNT(*) FILTER (WHERE COALESCE(p.payment_status, 'unpaid') = 'paid') as paid
       FROM bookings b
       LEFT JOIN payments p ON p.booking_id = b.id
-      WHERE b.user_id = $1
+      WHERE b.user_id = $1 ${dateFilter}
     `;
     
-    const stats = await query(statsQuery, [userId]);
-    const payments = await query(paymentQuery, [userId]);
+    const stats = await query(statsQuery, params);
+    const payments = await query(paymentQuery, params);
     
     res.json({
       success: true,
@@ -187,6 +532,7 @@ app.get('/api/user/bookings', authenticate, enforceTenancy, async (req, res) => 
       SELECT 
         b.id,
         b.service_id,
+        b.booking_name,
         c.name as client_name,
         c.phone as contact,
         s.name as service_name,
@@ -223,9 +569,37 @@ app.get('/api/user/bookings', authenticate, enforceTenancy, async (req, res) => 
     // Parse booking details from notes if JSON format
     const parsedBookings = bookings.rows.map(booking => {
       let bookingDetails = null;
+      let booking_date_end = null;
+      let booking_time_end = null;
+      let booking_days = 1;
+      let services = [];
+      let responsible_parties = [];
+      
       try {
         if (booking.notes && booking.notes.trim().startsWith('{')) {
-          bookingDetails = JSON.parse(booking.notes);
+          const notesObj = JSON.parse(booking.notes);
+          bookingDetails = notesObj;
+          
+          // Extract booking end date and time
+          if (notesObj.booking_date_end) {
+            booking_date_end = notesObj.booking_date_end;
+          }
+          if (notesObj.booking_time_end) {
+            booking_time_end = notesObj.booking_time_end;
+          }
+          if (notesObj.booking_days) {
+            booking_days = notesObj.booking_days;
+          }
+          
+          // Extract services array
+          if (notesObj.services && Array.isArray(notesObj.services)) {
+            services = notesObj.services;
+          }
+          
+          // Extract responsible parties
+          if (notesObj.responsible_parties && Array.isArray(notesObj.responsible_parties)) {
+            responsible_parties = notesObj.responsible_parties;
+          }
         }
       } catch (parseError) {
         console.log('Notes is not JSON format for booking', booking.id);
@@ -233,6 +607,11 @@ app.get('/api/user/bookings', authenticate, enforceTenancy, async (req, res) => 
       
       return {
         ...booking,
+        booking_date_end,
+        booking_time_end,
+        booking_days,
+        services: services.length > 0 ? services : [booking.service_name],
+        responsible_parties,
         booking_details: bookingDetails
       };
     });
@@ -250,17 +629,22 @@ app.get('/api/user/bookings', authenticate, enforceTenancy, async (req, res) => 
         bookings: parsedBookings.map(booking => ({
           id: booking.id,
           service_id: booking.service_id,
+          booking_name: booking.booking_name,
           client_name: booking.client_name,
           contact: booking.contact,
-          services: [booking.service_name],
+          services: Array.isArray(booking.services) ? booking.services : [booking.service_name],
           booking_date: booking.booking_date,
+          booking_date_end: booking.booking_date_end,
           booking_time: booking.booking_time,
+          booking_time_end: booking.booking_time_end,
+          booking_days: booking.booking_days,
           location_name: booking.location_name,
           location_map_url: booking.location_map_url,
           status: booking.status,
           payment_status: booking.payment_status,
-          total_amount: parseFloat(booking.total_amount || booking.total_price),
+          total_price: parseFloat(booking.total_amount || booking.total_price),
           amount_paid: parseFloat(booking.amount_paid),
+          responsible_parties: booking.responsible_parties,
           notes: booking.notes,
           booking_details: booking.booking_details
         })),
@@ -766,6 +1150,7 @@ app.put('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res)
     const bookingId = req.params.id;
     const userId = req.user.id;
     const {
+      booking_name,
       service_id,
       booking_date,
       booking_time,
@@ -780,6 +1165,7 @@ app.put('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res)
 
     console.log('=== UPDATE BOOKING ===');
     console.log('Booking ID:', bookingId);
+    console.log('Booking Name:', booking_name);
     console.log('Service ID:', service_id, 'Type:', typeof service_id);
     console.log('Booking Date:', booking_date);
     console.log('Booking Time:', booking_time);
@@ -808,19 +1194,21 @@ app.put('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res)
       // Update with service_id
       updateBookingQuery = `
         UPDATE bookings 
-        SET service_id = $1, 
-            booking_date = $2, 
-            booking_time = $3, 
-            location_name = $4,
-            location_map_url = $5,
-            status = $6, 
-            total_price = $7, 
-            notes = $8,
+        SET booking_name = $1,
+            service_id = $2, 
+            booking_date = $3, 
+            booking_time = $4, 
+            location_name = $5,
+            location_map_url = $6,
+            status = $7, 
+            total_price = $8, 
+            notes = $9,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $9 AND user_id = $10
+        WHERE id = $10 AND user_id = $11
         RETURNING id
       `;
       updateParams = [
+        booking_name || null,
         service_id,
         booking_date,
         booking_time,
@@ -836,18 +1224,20 @@ app.put('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res)
       // Update without service_id (keep existing service_id)
       updateBookingQuery = `
         UPDATE bookings 
-        SET booking_date = $1, 
-            booking_time = $2, 
-            location_name = $3,
-            location_map_url = $4,
-            status = $5, 
-            total_price = $6, 
-            notes = $7,
+        SET booking_name = $1,
+            booking_date = $2, 
+            booking_time = $3, 
+            location_name = $4,
+            location_map_url = $5,
+            status = $6, 
+            total_price = $7, 
+            notes = $8,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $8 AND user_id = $9
+        WHERE id = $9 AND user_id = $10
         RETURNING id
       `;
       updateParams = [
+        booking_name || null,
         booking_date,
         booking_time,
         location_name,
@@ -964,6 +1354,50 @@ app.delete('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, r
   }
 });
 
+// PATCH: Update Google Calendar event ID for booking
+app.patch('/api/user/bookings/:id/google-event', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const userId = req.user.id;
+    const { google_calendar_event_id } = req.body;
+
+    // Verify booking belongs to user
+    const checkQuery = 'SELECT id FROM bookings WHERE id = $1 AND user_id = $2';
+    const checkResult = await query(checkQuery, [bookingId, userId]);
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking tidak ditemukan'
+      });
+    }
+
+    // Update google_calendar_event_id
+    const updateQuery = `
+      UPDATE bookings 
+      SET google_calendar_event_id = $1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2 AND user_id = $3
+      RETURNING id, google_calendar_event_id
+    `;
+    
+    const result = await query(updateQuery, [google_calendar_event_id, bookingId, userId]);
+
+    res.json({
+      success: true,
+      message: 'Google Calendar event ID updated',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error updating Google Calendar event ID:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gagal mengupdate Google Calendar event ID'
+    });
+  }
+});
+
 // GET: Get single booking detail
 app.get('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res) => {
   try {
@@ -980,6 +1414,7 @@ app.get('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res)
         c.address,
         b.service_id,
         s.name as service_name,
+        b.booking_name,
         to_char(b.booking_date, 'YYYY-MM-DD') as booking_date,
         to_char(b.booking_time, 'HH24:MI') as booking_time,
         b.location_name,
@@ -987,6 +1422,7 @@ app.get('/api/user/bookings/:id', authenticate, enforceTenancy, async (req, res)
         b.status,
         b.total_price as total_amount,
         b.notes,
+        b.google_calendar_event_id,
         COALESCE(p.payment_status, 'unpaid') as payment_status,
         COALESCE(p.amount, 0) as amount_paid
       FROM bookings b
@@ -1042,7 +1478,23 @@ app.post('/api/user/bookings', authenticate, enforceTenancy, async (req, res) =>
     await client.query('BEGIN');
     
     const user_id = req.user.id;
+    
+    // SECURITY: Validate and sanitize all inputs
+    const { validateBookingData } = require('./utils/validation');
+    let validatedData;
+    
+    try {
+      validatedData = validateBookingData(req.body);
+    } catch (validationError) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: validationError.message
+      });
+    }
+    
     const {
+      booking_name,
       client_id,
       client_name,
       contact,
@@ -1052,13 +1504,32 @@ app.post('/api/user/bookings', authenticate, enforceTenancy, async (req, res) =>
       booking_time,
       location_name,
       location_map_url,
-      status = 'pending',
+      status,
       total_amount,
-      amount_paid = 0,
+      amount_paid,
       notes
-    } = req.body;
+    } = validatedData;
 
     let finalClientId = client_id;
+
+    // SECURITY: Validate client_id belongs to current user
+    if (client_id) {
+      const validateClientQuery = `
+        SELECT id FROM clients 
+        WHERE id = $1 AND user_id = $2
+      `;
+      const clientCheck = await client.query(validateClientQuery, [client_id, user_id]);
+      
+      if (clientCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid client ID or client does not belong to you'
+        });
+      }
+      
+      finalClientId = client_id;
+    }
 
     // If new client, create client first
     if (!client_id && client_name) {
@@ -1073,8 +1544,8 @@ app.post('/api/user/bookings', authenticate, enforceTenancy, async (req, res) =>
 
     // Create booking
     const createBookingQuery = `
-      INSERT INTO bookings (user_id, client_id, service_id, booking_date, booking_time, location_name, location_map_url, status, total_price, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO bookings (user_id, client_id, service_id, booking_date, booking_time, location_name, location_map_url, status, total_price, booking_name, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id
     `;
     
@@ -1088,6 +1559,7 @@ app.post('/api/user/bookings', authenticate, enforceTenancy, async (req, res) =>
       location_map_url,
       status,
       total_amount,
+      booking_name || null,
       notes
     ]);
 
@@ -1283,7 +1755,7 @@ app.get('/api/user/profile', authenticate, enforceTenancy, async (req, res) => {
     const user_id = req.user.id;
     
     const result = await query(
-      'SELECT id, email as username, full_name as name, email, role, created_at FROM users WHERE id = $1',
+      'SELECT id, email as username, full_name as name, email, role, auth_provider, booking_code, created_at FROM users WHERE id = $1',
       [user_id]
     );
 
@@ -1307,6 +1779,105 @@ app.get('/api/user/profile', authenticate, enforceTenancy, async (req, res) => {
   }
 });
 
+// GET: Get booking link info
+app.get('/api/user/booking-link', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const result = await query(
+      `SELECT 
+        u.booking_code,
+        u.full_name,
+        cs.company_name,
+        cs.company_logo_url,
+        cs.company_address,
+        cs.company_phone
+      FROM users u
+      LEFT JOIN company_settings cs ON u.id = cs.user_id
+      WHERE u.id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const data = result.rows[0];
+    
+    // Use frontend URL for booking link (port 3000 for frontend, not 5001 backend)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    
+    res.json({
+      success: true,
+      data: {
+        booking_code: data.booking_code,
+        booking_url: `/booking/${data.booking_code}`,
+        full_url: `${frontendUrl}/booking/${data.booking_code}`,
+        company_name: data.company_name || data.full_name,
+        logo: data.company_logo_url,
+        address: data.company_address,
+        phone: data.company_phone
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching booking link:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch booking link'
+    });
+  }
+});
+
+// POST: Regenerate booking code (if user wants new link)
+app.post('/api/user/booking-link/regenerate', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Generate new unique code
+    const result = await query(
+      `UPDATE users 
+       SET booking_code = (
+         SELECT string_agg(substr('abcdefghijklmnopqrstuvwxyz0123456789', ceil(random()*36)::integer, 1), '')
+         FROM generate_series(1, 16)
+       )
+       WHERE id = $1
+       RETURNING booking_code`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const newCode = result.rows[0].booking_code;
+    
+    // Use frontend URL for booking link (port 3000 for frontend, not 5001 backend)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    
+    res.json({
+      success: true,
+      message: 'Booking link berhasil diperbarui',
+      data: {
+        booking_code: newCode,
+        booking_url: `/booking/${newCode}`,
+        full_url: `${frontendUrl}/booking/${newCode}`
+      }
+    });
+  } catch (error) {
+    console.error('Error regenerating booking link:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to regenerate booking link'
+    });
+  }
+});
+
 // Update user profile (name & email)
 app.put('/api/user/profile', authenticate, enforceTenancy, async (req, res) => {
   try {
@@ -1321,42 +1892,64 @@ app.put('/api/user/profile', authenticate, enforceTenancy, async (req, res) => {
       });
     }
 
-    if (!email || !email.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid email format'
-      });
-    }
-
-    // Check if email is already used by another user
-    const emailCheck = await query(
-      'SELECT id FROM users WHERE email = $1 AND id != $2',
-      [email, user_id]
+    // Get current user to check auth provider
+    const userResult = await query(
+      'SELECT auth_provider, email as current_email FROM users WHERE id = $1',
+      [user_id]
     );
 
-    if (emailCheck.rows.length > 0) {
-      return res.status(400).json({
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: 'Email already in use by another account'
+        message: 'User not found'
       });
     }
 
-    // Update profile
+    const currentUser = userResult.rows[0];
+    const isGoogleOAuth = currentUser.auth_provider === 'google';
+
+    // Jika Google OAuth, gunakan email saat ini (tidak bisa diubah)
+    const finalEmail = isGoogleOAuth ? currentUser.current_email : email;
+
+    // Validate email hanya jika bukan Google OAuth
+    if (!isGoogleOAuth) {
+      if (!email || !email.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email is required'
+        });
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid email format'
+        });
+      }
+
+      // Check if email is already used by another user
+      const emailCheck = await query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [email, user_id]
+      );
+
+      if (emailCheck.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email already in use by another account'
+        });
+      }
+    }
+
+    // Update profile - email hanya diupdate jika bukan Google OAuth
     const result = await query(
       `UPDATE users 
        SET full_name = $1, email = $2, updated_at = CURRENT_TIMESTAMP 
        WHERE id = $3 
-       RETURNING id, email as username, full_name as name, email, role, created_at`,
-      [name, email, user_id]
+       RETURNING id, username, full_name as name, email, role, auth_provider, created_at`,
+      [name, finalEmail, user_id]
     );
 
     res.json({
@@ -1518,17 +2111,9 @@ app.post('/api/user/set-pin', authenticate, enforceTenancy, async (req, res) => 
       });
     }
 
-    // Verify current password for security
-    if (!currentPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password saat ini diperlukan untuk keamanan'
-      });
-    }
-
     // Get user's current password hash and security PIN
     const userResult = await query(
-      'SELECT password, security_pin FROM users WHERE id = $1',
+      'SELECT password, security_pin, auth_provider FROM users WHERE id = $1',
       [user_id]
     );
 
@@ -1541,6 +2126,17 @@ app.post('/api/user/set-pin', authenticate, enforceTenancy, async (req, res) => 
 
     const user = userResult.rows[0];
     const bcrypt = require('bcryptjs');
+
+    // Check if user is Google OAuth user
+    const isGoogleUser = user.auth_provider === 'google';
+
+    // Verify current password for security (skip for Google OAuth users)
+    if (!isGoogleUser && !currentPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password saat ini diperlukan untuk keamanan'
+      });
+    }
 
     // If user already has PIN, require current PIN verification
     if (user.security_pin) {
@@ -1568,14 +2164,16 @@ app.post('/api/user/set-pin', authenticate, enforceTenancy, async (req, res) => 
       }
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    // Verify password (skip for Google OAuth users)
+    if (!isGoogleUser) {
+      const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
 
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Password saat ini salah'
-      });
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          message: 'Password saat ini salah'
+        });
+      }
     }
 
     // Hash PIN for security
@@ -2083,9 +2681,14 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
     const userId = req.user.id;
     const { month, year } = req.query;
     
+    // Filter untuk booking_date (revenue, unpaid)
     let dateFilter = '';
     const params = [userId];
     let paramCount = 1;
+    
+    // Filter untuk payment_date (paid)
+    let paymentDateFilter = '';
+    const paymentParams = [userId];
     
     if (month && year) {
       paramCount++;
@@ -2094,9 +2697,13 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
       paramCount++;
       dateFilter += ` AND EXTRACT(YEAR FROM b.booking_date) = $${paramCount}::int`;
       params.push(parseInt(year));
+      
+      // Filter pembayaran berdasarkan payment_date
+      paymentDateFilter = ' AND EXTRACT(MONTH FROM p.payment_date) = $2::int AND EXTRACT(YEAR FROM p.payment_date) = $3::int';
+      paymentParams.push(parseInt(month), parseInt(year));
     }
     
-    // Get revenue data from bookings and payments
+    // Get revenue and unpaid from bookings (filter by booking_date)
     // Logika:
     // 1. Status 'cancelled' + unpaid (amount_paid = 0) → TIDAK dihitung sama sekali
     // 2. Status 'cancelled' + partial/paid (amount_paid > 0) → amount_paid masuk ke total_paid, sisa tidak dihitung
@@ -2112,9 +2719,6 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
             END
           ), 0
         ) as total_revenue,
-        
-        -- Total Paid: amount yang sudah dibayar (termasuk dari cancelled jika ada pembayaran)
-        COALESCE(SUM(CAST(COALESCE(p.amount_paid, 0) AS DECIMAL)), 0) as total_paid,
         
         -- Total Unpaid: sisa yang belum dibayar, KECUALI dari booking cancelled
         COALESCE(
@@ -2133,6 +2737,15 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
       ) p ON b.id = p.booking_id
       WHERE b.user_id = $1 ${dateFilter}`,
       params
+    );
+    
+    // Get total_paid from payments (filter by payment_date, not booking_date)
+    const paidResult = await query(
+      `SELECT COALESCE(SUM(CAST(p.amount AS DECIMAL)), 0) as total_paid
+      FROM payments p
+      INNER JOIN bookings b ON p.booking_id = b.id
+      WHERE b.user_id = $1 ${paymentDateFilter}`,
+      paymentParams
     );
     
     // Get expenses data
@@ -2289,17 +2902,18 @@ app.get('/api/user/financial-summary', authenticate, enforceTenancy, async (req,
     console.log('Final cancelledTax:', cancelledTax);
     
     const revenue = revenueResult.rows[0];
+    const paid = paidResult.rows[0];
     const expenses = expenseResult.rows[0];
     
     res.json({
       success: true,
       data: {
         total_revenue: parseFloat(revenue.total_revenue),
-        total_paid: parseFloat(revenue.total_paid),
+        total_paid: parseFloat(paid.total_paid),
         total_unpaid: parseFloat(revenue.total_unpaid),
         total_expenses: parseFloat(expenses.total_expenses),
         total_tax: parseFloat(totalTax.toFixed(2)),
-        net_income: parseFloat(revenue.total_paid) - parseFloat(expenses.total_expenses) - parseFloat(totalTax.toFixed(2)) + parseFloat(cancelledTax.toFixed(2))
+        net_income: parseFloat(paid.total_paid) - parseFloat(expenses.total_expenses) - parseFloat(totalTax.toFixed(2)) + parseFloat(cancelledTax.toFixed(2))
       }
     });
   } catch (error) {
@@ -2323,7 +2937,10 @@ app.get('/api/user/financial-details/:type', authenticate, enforceTenancy, async
     
     console.log('Financial details request:', { type, month, year, userId });
     
+    // Filter berdasarkan booking_date (untuk revenue, unpaid, tax)
     let dateFilter = '';
+    // Filter berdasarkan payment_date (untuk paid)
+    let paymentDateFilter = '';
     const params = [userId];
     let paramCount = 1;
     
@@ -2334,6 +2951,9 @@ app.get('/api/user/financial-details/:type', authenticate, enforceTenancy, async
       paramCount++;
       dateFilter += ` AND EXTRACT(YEAR FROM b.booking_date) = $${paramCount}::int`;
       params.push(parseInt(year));
+      
+      // Untuk paid, gunakan payment_date bukan booking_date
+      paymentDateFilter = ` AND EXTRACT(MONTH FROM p.payment_date) = $2::int AND EXTRACT(YEAR FROM p.payment_date) = $3::int`;
     }
     
     let queryStr = '';
@@ -2396,7 +3016,7 @@ app.get('/api/user/financial-details/:type', authenticate, enforceTenancy, async
         break;
         
       case 'paid':
-        // Amount already paid
+        // Amount already paid - filter berdasarkan payment_date bukan booking_date
         queryStr = `
           SELECT 
             b.id,
@@ -2411,7 +3031,7 @@ app.get('/api/user/financial-details/:type', authenticate, enforceTenancy, async
           FROM payments p
           INNER JOIN bookings b ON p.booking_id = b.id
           LEFT JOIN clients c ON b.client_id = c.id
-          WHERE b.user_id = $1 ${dateFilter}
+          WHERE b.user_id = $1 ${paymentDateFilter}
           ORDER BY p.payment_date DESC
         `;
         
@@ -2783,6 +3403,77 @@ app.get('/api/clients', authenticate, enforceTenancy, async (req, res) => {
   }
 });
 
+// Get all booking names
+app.get('/api/booking-names', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const bookingNames = await query(
+      'SELECT id, name, created_at, updated_at FROM booking_names WHERE user_id = $1 ORDER BY name',
+      [userId]
+    );
+    res.json(bookingNames.rows);
+  } catch (error) {
+    console.error('Error fetching booking names:', error);
+    res.status(500).json({ message: 'Failed to fetch booking names' });
+  }
+});
+
+// Create new booking name
+app.post('/api/booking-names', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name } = req.body;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ message: 'Booking name is required' });
+    }
+
+    // Check if booking name already exists
+    const existing = await query(
+      'SELECT id FROM booking_names WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
+      [userId, name.trim()]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ message: 'Booking name already exists' });
+    }
+
+    const result = await query(
+      'INSERT INTO booking_names (name, user_id) VALUES ($1, $2) RETURNING *',
+      [name.trim(), userId]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating booking name:', error);
+    res.status(500).json({ message: 'Failed to create booking name' });
+  }
+});
+
+// Delete booking name
+app.delete('/api/booking-names/:id', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    // Verify booking name belongs to the user
+    const bookingName = await query(
+      'SELECT id FROM booking_names WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (bookingName.rows.length === 0) {
+      return res.status(404).json({ message: 'Booking name not found' });
+    }
+
+    await query('DELETE FROM booking_names WHERE id = $1', [id]);
+    res.json({ message: 'Booking name deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting booking name:', error);
+    res.status(500).json({ message: 'Failed to delete booking name' });
+  }
+});
+
 // Get all services
 app.get('/api/services', authenticate, enforceTenancy, async (req, res) => {
   try {
@@ -2804,7 +3495,7 @@ app.get('/api/bookings', authenticate, enforceTenancy, async (req, res) => {
     const userId = req.user.id;
     const bookings = await query(
       `SELECT b.id, b.client_id, b.service_id, b.booking_date, b.booking_time, b.status, 
-              b.total_price, b.notes, b.created_at,
+              b.total_price, b.notes, b.created_at, b.booking_name,
               c.name as client_name, s.name as service_name,
               p.payment_status, p.amount as amount_paid
        FROM bookings b
@@ -2900,6 +3591,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
       services: req.query.services !== 'false',
       responsibleParties: req.query.responsibleParties !== 'false',
       serviceResponsibleParties: req.query.serviceResponsibleParties !== 'false',
+      bookingNames: req.query.bookingNames !== 'false',
       bookings: req.query.bookings !== 'false',
       payments: req.query.payments !== 'false',
       expenses: req.query.expenses !== 'false',
@@ -2912,6 +3604,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
       services: req.query.servicesIds ? JSON.parse(req.query.servicesIds) : null,
       responsibleParties: req.query.responsiblePartiesIds ? JSON.parse(req.query.responsiblePartiesIds) : null,
       serviceResponsibleParties: req.query.serviceResponsiblePartiesIds ? JSON.parse(req.query.serviceResponsiblePartiesIds) : null,
+      bookingNames: req.query.bookingNamesIds ? JSON.parse(req.query.bookingNamesIds) : null,
       bookings: req.query.bookingsIds ? JSON.parse(req.query.bookingsIds) : null,
       payments: req.query.paymentsIds ? JSON.parse(req.query.paymentsIds) : null,
       expenses: req.query.expensesIds ? JSON.parse(req.query.expensesIds) : null,
@@ -3009,7 +3702,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
       let bookingsQuery = `SELECT 
         b.id, b.booking_date, b.booking_time,
         c.name as client_name, c.phone as client_phone, c.address as client_address,
-        b.location_name,
+        b.location_name, b.booking_name,
         b.total_price, b.status, b.notes,
         COALESCE(p.amount_paid, 0) as amount_paid,
         CASE 
@@ -3042,6 +3735,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
         // Define columns
         worksheet.columns = [
           { header: 'ID Booking', key: 'id', width: 12 },
+          { header: 'Nama Booking', key: 'booking_name', width: 25 },
           { header: 'Tanggal Mulai', key: 'booking_date', width: 20 },
           { header: 'Tanggal Selesai', key: 'booking_date_end', width: 20 },
           { header: 'Waktu Mulai', key: 'booking_time', width: 15 },
@@ -3136,6 +3830,7 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
 
           worksheet.addRow({
             id: row.id,
+            booking_name: row.booking_name || '',
             booking_date: formatDate(row.booking_date),
             booking_date_end: bookingDetails.booking_date_end ? formatDate(bookingDetails.booking_date_end) : '',
             booking_time: row.booking_time || '',
@@ -3163,6 +3858,44 @@ app.get('/api/backup/export/:format', authenticate, enforceTenancy, async (req, 
         // Apply styling
         styleWorksheet(worksheet);
         console.log(`  ✅ Exported ${bookings.rows.length} bookings`);
+      }
+    }
+
+    // Fetch and add Booking Names sheet if selected
+    if (selection.bookingNames) {
+      console.log('🏷️ Starting booking names export...');
+      let bookingNamesQuery = 'SELECT id, name, created_at, updated_at FROM booking_names WHERE user_id = $1';
+      const params = [userId];
+      
+      if (selectedIds.bookingNames && selectedIds.bookingNames.length > 0) {
+        bookingNamesQuery += ' AND id = ANY($2::int[])';
+        params.push(selectedIds.bookingNames);
+      }
+      
+      bookingNamesQuery += ' ORDER BY name';
+      const bookingNames = await query(bookingNamesQuery, params);
+      
+      if (bookingNames.rows.length > 0) {
+        const worksheet = workbook.addWorksheet('Nama Booking');
+        
+        worksheet.columns = [
+          { header: 'ID', key: 'id', width: 8 },
+          { header: 'Nama Booking', key: 'name', width: 40 },
+          { header: 'Tanggal Dibuat', key: 'created_at', width: 22 },
+          { header: 'Terakhir Diubah', key: 'updated_at', width: 22 }
+        ];
+        
+        bookingNames.rows.forEach(row => {
+          worksheet.addRow({
+            id: row.id,
+            name: row.name || '',
+            created_at: formatDate(row.created_at),
+            updated_at: formatDate(row.updated_at)
+          });
+        });
+        
+        styleWorksheet(worksheet);
+        console.log(`  ✅ Exported ${bookingNames.rows.length} booking names`);
       }
     }
 
@@ -3535,6 +4268,7 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
       services: req.query.services !== 'false',
       responsibleParties: req.query.responsibleParties !== 'false',
       serviceResponsibleParties: req.query.serviceResponsibleParties !== 'false',
+      bookingNames: req.query.bookingNames !== 'false',
       bookings: req.query.bookings !== 'false',
       payments: req.query.payments !== 'false',
       expenses: req.query.expenses !== 'false',
@@ -3547,6 +4281,7 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
       services: req.query.servicesIds ? JSON.parse(req.query.servicesIds) : null,
       responsibleParties: req.query.responsiblePartiesIds ? JSON.parse(req.query.responsiblePartiesIds) : null,
       serviceResponsibleParties: req.query.serviceResponsiblePartiesIds ? JSON.parse(req.query.serviceResponsiblePartiesIds) : null,
+      bookingNames: req.query.bookingNamesIds ? JSON.parse(req.query.bookingNamesIds) : null,
       bookings: req.query.bookingsIds ? JSON.parse(req.query.bookingsIds) : null,
       payments: req.query.paymentsIds ? JSON.parse(req.query.paymentsIds) : null,
       expenses: req.query.expensesIds ? JSON.parse(req.query.expensesIds) : null,
@@ -3641,6 +4376,25 @@ app.get('/api/backup/download-json', authenticate, enforceTenancy, async (req, r
     } else {
       backup.data.serviceResponsibleParties = [];
       console.log(`  ⏭️  Skipped service responsible parties`);
+    }
+
+    // Fetch booking names if selected
+    if (selection.bookingNames) {
+      let bookingNamesQuery = 'SELECT * FROM booking_names WHERE user_id = $1';
+      const params = [userId];
+      
+      if (selectedIds.bookingNames && selectedIds.bookingNames.length > 0) {
+        bookingNamesQuery += ' AND id = ANY($2::int[])';
+        params.push(selectedIds.bookingNames);
+      }
+      
+      bookingNamesQuery += ' ORDER BY name';
+      const bookingNames = await query(bookingNamesQuery, params);
+      backup.data.bookingNames = bookingNames.rows;
+      console.log(`  ✅ Exported ${bookingNames.rows.length} booking names`);
+    } else {
+      backup.data.bookingNames = [];
+      console.log(`  ⏭️  Skipped booking names`);
     }
 
     // Fetch bookings if selected (with client and service names for duplicate detection)
@@ -3875,7 +4629,11 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
           const responsiblePartiesDeleted = await query('DELETE FROM responsible_parties WHERE user_id = $1', [userId]);
           console.log(`  ✅ Deleted ${responsiblePartiesDeleted.rowCount} responsible parties`);
           
-          // 9. Delete company_settings (references user)
+          // 9. Delete booking_names (references user)
+          const bookingNamesDeleted = await query('DELETE FROM booking_names WHERE user_id = $1', [userId]);
+          console.log(`  ✅ Deleted ${bookingNamesDeleted.rowCount} booking names`);
+          
+          // 10. Delete company_settings (references user)
           const settingsDeleted = await query('DELETE FROM company_settings WHERE user_id = $1', [userId]);
           console.log(`  ✅ Deleted ${settingsDeleted.rowCount} company settings`);
           
@@ -4024,6 +4782,36 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
           }
         }
 
+        // Import booking names
+        // For 'replace' mode: import ALL booking names
+        // For 'add' mode: bookingNames array is already pre-filtered by frontend, import all items in the array
+        // (Unlike clients/services, bookingNames don't need ID mapping for other tables)
+        
+        if (backupData.data.bookingNames && backupData.data.bookingNames.length > 0) {
+          console.log(`  📝 Processing ${backupData.data.bookingNames.length} booking names for import...`);
+          
+          for (let i = 0; i < backupData.data.bookingNames.length; i++) {
+            const bookingName = backupData.data.bookingNames[i];
+            
+            // Check if booking name already exists
+            const existing = await query(
+              'SELECT id FROM booking_names WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
+              [userId, bookingName.name]
+            );
+            
+            if (existing.rows.length === 0) {
+              await query(
+                `INSERT INTO booking_names (name, user_id, created_at, updated_at) 
+                 VALUES ($1, $2, $3, $4)`,
+                [bookingName.name, userId, bookingName.created_at, bookingName.updated_at || bookingName.created_at]
+              );
+              console.log(`  ✅ Imported booking name: ${bookingName.name}`);
+            } else {
+              console.log(`  ⏭️  Skipped existing booking name: ${bookingName.name}`);
+            }
+          }
+        }
+
         // Import expense categories (preserve default/system categories)
         // For 'replace' mode: import ALL categories
         // For 'add' mode: import only those flagged for import (not duplicates)
@@ -4135,9 +4923,9 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
               }
 
               const result = await query(
-                `INSERT INTO bookings (user_id, client_id, service_id, booking_date, booking_time, location_name, location_map_url, total_price, status, notes, created_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-                [userId, newClientId, newServiceId, booking.booking_date, booking.booking_time || '00:00:00', booking.location_name || null, booking.location_map_url || null, booking.total_price, booking.status, updatedNotes, booking.created_at, booking.updated_at]
+                `INSERT INTO bookings (user_id, client_id, service_id, booking_date, booking_time, location_name, location_map_url, total_price, status, notes, booking_name, created_at, updated_at) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+                [userId, newClientId, newServiceId, booking.booking_date, booking.booking_time || '00:00:00', booking.location_name || null, booking.location_map_url || null, booking.total_price, booking.status, updatedNotes, booking.booking_name || null, booking.created_at, booking.updated_at]
               );
               bookingIdMap[booking.id] = result.rows[0].id;
               console.log(`  ✅ Imported booking: ${booking.booking_date} - Client: ${newClientId}, Service: ${newServiceId}${booking.location_name ? ` at ${booking.location_name}` : ''}`);
@@ -4274,6 +5062,31 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
           console.log(`  ✅ Imported company settings (with bank info)`);
         }
 
+        // Reset all sequences to prevent duplicate key errors
+        // This ensures SERIAL columns generate IDs higher than existing data
+        console.log('📊 Resetting sequences...');
+        const sequenceResets = [
+          "SELECT setval('clients_id_seq', COALESCE((SELECT MAX(id) FROM clients), 0) + 1, false)",
+          "SELECT setval('services_id_seq', COALESCE((SELECT MAX(id) FROM services), 0) + 1, false)",
+          "SELECT setval('bookings_id_seq', COALESCE((SELECT MAX(id) FROM bookings), 0) + 1, false)",
+          "SELECT setval('payments_id_seq', COALESCE((SELECT MAX(id) FROM payments), 0) + 1, false)",
+          "SELECT setval('expenses_id_seq', COALESCE((SELECT MAX(id) FROM expenses), 0) + 1, false)",
+          "SELECT setval('expense_categories_id_seq', COALESCE((SELECT MAX(id) FROM expense_categories), 0) + 1, false)",
+          "SELECT setval('responsible_parties_id_seq', COALESCE((SELECT MAX(id) FROM responsible_parties), 0) + 1, false)",
+          "SELECT setval('service_responsible_parties_id_seq', COALESCE((SELECT MAX(id) FROM service_responsible_parties), 0) + 1, false)",
+          "SELECT setval('booking_names_id_seq', COALESCE((SELECT MAX(id) FROM booking_names), 0) + 1, false)"
+        ];
+        
+        for (const resetQuery of sequenceResets) {
+          try {
+            await query(resetQuery);
+          } catch (seqError) {
+            // Ignore sequence errors (some tables might not have sequences)
+            console.log(`  ⚠️ Sequence reset skipped: ${seqError.message}`);
+          }
+        }
+        console.log('  ✅ Sequences reset successfully');
+
         // Commit transaction
         await query('COMMIT');
 
@@ -4289,6 +5102,1294 @@ app.post('/api/backup/import', authenticate, enforceTenancy, upload.single('back
     res.status(500).json({
       success: false,
       message: 'Failed to import backup data'
+    });
+  }
+});
+
+// ====================================
+// GOOGLE CALENDAR ENDPOINTS
+// ====================================
+
+const googleCalendarService = require('./services/googleCalendarService');
+
+// Get Google Calendar auth URL
+app.get('/api/user/google-calendar/auth-url', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Check if user is Google OAuth user
+    const userResult = await query(
+      'SELECT auth_provider, google_id FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.auth_provider !== 'google' || !user.google_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Fitur Google Calendar hanya tersedia untuk user yang login menggunakan akun Google'
+      });
+    }
+
+    const authUrl = googleCalendarService.getAuthUrl(userId);
+
+    res.json({
+      success: true,
+      message: 'Google Calendar auth URL generated successfully',
+      data: {
+        authUrl: authUrl
+      }
+    });
+
+  } catch (error) {
+    console.error('Error generating Google Calendar auth URL:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate Google Calendar auth URL'
+    });
+  }
+});
+
+// Handle Google Calendar OAuth callback
+app.get('/api/user/google-calendar/callback', async (req, res) => {
+  try {
+    const { code, state: userId, error } = req.query;
+
+    console.log('Google Calendar callback received:', { code: !!code, userId, error });
+
+    // Handle OAuth errors
+    if (error) {
+      console.error('OAuth error in callback:', error);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/dashboard?calendar_error=${encodeURIComponent(error)}`);
+    }
+
+    if (!code) {
+      console.error('No authorization code received');
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/dashboard?calendar_error=no_code`);
+    }
+
+    if (!userId) {
+      console.error('No state parameter (userId) received');
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/dashboard?calendar_error=no_state`);
+    }
+
+    // Verify user exists
+    const userResult = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      console.error('User not found for callback:', userId);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/dashboard?calendar_error=user_not_found`);
+    }
+
+    // Get tokens from Google
+    console.log('Getting tokens from Google...');
+    const tokens = await googleCalendarService.getTokens(code);
+    console.log('Tokens received successfully');
+
+    // Store tokens in database
+    await query(
+      `UPDATE users 
+       SET google_access_token = $1, 
+           google_refresh_token = $2, 
+           google_token_expiry = $3,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $4`,
+      [
+        tokens.access_token,
+        tokens.refresh_token,
+        tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        userId
+      ]
+    );
+
+    console.log('Tokens stored successfully for user:', userId);
+
+    // Redirect back to frontend with success
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/dashboard?calendar_connected=true`);
+
+  } catch (error) {
+    console.error('Error handling Google Calendar callback:', error);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/dashboard?calendar_error=${encodeURIComponent(error.message)}`);
+  }
+});
+
+// Check Google Calendar connection status
+app.get('/api/user/google-calendar/status', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Check if user is Google OAuth user
+    const userResult = await query(
+      'SELECT auth_provider, google_id, google_access_token, google_refresh_token, google_token_expiry FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    // Must be Google user
+    if (user.auth_provider !== 'google' || !user.google_id) {
+      return res.json({
+        success: true,
+        data: {
+          connected: false,
+          message: 'Google Calendar only available for Google login users'
+        }
+      });
+    }
+
+    // Check if tokens exist
+    if (!user.google_access_token || !user.google_refresh_token) {
+      return res.json({
+        success: true,
+        data: {
+          connected: false,
+          needsReconnect: false,
+          message: 'Not connected to Google Calendar'
+        }
+      });
+    }
+
+    // Validate connection with Google API
+    const validationResult = await googleCalendarService.validateConnection(userId);
+
+    if (!validationResult.success) {
+      return res.json({
+        success: true,
+        data: {
+          connected: false,
+          needsReconnect: validationResult.needsReconnect || false,
+          message: validationResult.message || 'Connection validation failed'
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        connected: true,
+        userEmail: validationResult.userEmail,
+        tokenExpiry: user.google_token_expiry
+      }
+    });
+
+  } catch (error) {
+    console.error('Error checking Google Calendar status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check Google Calendar status'
+    });
+  }
+});
+
+// Disconnect Google Calendar
+app.post('/api/user/google-calendar/disconnect', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Clear Google Calendar tokens
+    await query(
+      `UPDATE users 
+       SET google_access_token = NULL,
+           google_refresh_token = NULL,
+           google_token_expiry = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Google Calendar disconnected successfully'
+    });
+
+  } catch (error) {
+    console.error('Error disconnecting Google Calendar:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to disconnect Google Calendar'
+    });
+  }
+});
+
+// Get Google Calendar events
+app.get('/api/user/google-calendar/events', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { timeMin, timeMax, maxResults } = req.query;
+
+    // Check if user is Google OAuth user
+    const userResult = await query(
+      'SELECT auth_provider, google_id FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.auth_provider !== 'google' || !user.google_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Fitur Google Calendar hanya tersedia untuk user yang login menggunakan akun Google'
+      });
+    }
+
+    const options = {};
+    if (timeMin) options.timeMin = timeMin;
+    if (timeMax) options.timeMax = timeMax;
+    if (maxResults) options.maxResults = parseInt(maxResults);
+
+    const result = await googleCalendarService.getCalendarEvents(userId, options);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Google Calendar events retrieved successfully',
+      data: result.data
+    });
+
+  } catch (error) {
+    console.error('Error fetching Google Calendar events:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch Google Calendar events'
+    });
+  }
+});
+
+// Create Google Calendar event
+app.post('/api/user/google-calendar/events', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { summary, description, startDateTime, endDateTime, location, timeZone } = req.body;
+
+    // Validate required fields
+    if (!summary || !startDateTime || !endDateTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Summary, start date/time, and end date/time are required'
+      });
+    }
+
+    const eventData = {
+      summary,
+      description,
+      startDateTime,
+      endDateTime,
+      location,
+      timeZone
+    };
+
+    const result = await googleCalendarService.createCalendarEvent(userId, eventData);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Google Calendar event created successfully',
+      data: result.data
+    });
+
+  } catch (error) {
+    console.error('Error creating Google Calendar event:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create Google Calendar event'
+    });
+  }
+});
+
+// Update Google Calendar event
+app.put('/api/user/google-calendar/events/:eventId', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const eventId = req.params.eventId;
+    const { summary, description, startDateTime, endDateTime, location, timeZone } = req.body;
+
+    // Validate required fields
+    if (!summary || !startDateTime || !endDateTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Summary, start date/time, and end date/time are required'
+      });
+    }
+
+    const eventData = {
+      summary,
+      description,
+      startDateTime,
+      endDateTime,
+      location,
+      timeZone
+    };
+
+    const result = await googleCalendarService.updateCalendarEvent(userId, eventId, eventData);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Google Calendar event updated successfully',
+      data: result.data
+    });
+
+  } catch (error) {
+    console.error('Error updating Google Calendar event:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update Google Calendar event'
+    });
+  }
+});
+
+// Delete Google Calendar event
+app.delete('/api/user/google-calendar/events/:eventId', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const eventId = req.params.eventId;
+
+    const result = await googleCalendarService.deleteCalendarEvent(userId, eventId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Google Calendar event deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting Google Calendar event:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete Google Calendar event'
+    });
+  }
+});
+
+// ====================================
+// CLIENT SUBMISSIONS ENDPOINTS
+// ====================================
+
+// PUBLIC: Get booking info by booking code (NEW - Secure Method)
+app.get('/api/public/booking/:bookingCode/info', async (req, res) => {
+  try {
+    const { bookingCode } = req.params;
+
+    // Get user/company info by booking_code
+    const userQuery = `
+      SELECT 
+        u.id, u.full_name, u.email, u.booking_code,
+        cs.company_name, cs.company_logo_url, cs.company_address, 
+        cs.company_phone, cs.company_email
+      FROM users u
+      LEFT JOIN company_settings cs ON u.id = cs.user_id
+      WHERE u.booking_code = $1
+    `;
+    const userResult = await query(userQuery, [bookingCode]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Link booking tidak valid'
+      });
+    }
+
+    const userId = userResult.rows[0].id;
+
+    // Get available services
+    const servicesQuery = `
+      SELECT id, name, price as default_price, description
+      FROM services
+      WHERE user_id = $1 AND is_active = true
+      ORDER BY name
+    `;
+    const servicesResult = await query(servicesQuery, [userId]);
+
+    // Get booking names for autocomplete
+    const bookingNamesQuery = `
+      SELECT DISTINCT booking_name
+      FROM bookings
+      WHERE user_id = $1 AND booking_name IS NOT NULL AND booking_name != ''
+      ORDER BY booking_name
+      LIMIT 50
+    `;
+    const bookingNamesResult = await query(bookingNamesQuery, [userId]);
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: userResult.rows[0].id,
+          name: userResult.rows[0].full_name,
+          companyName: userResult.rows[0].company_name || userResult.rows[0].full_name,
+          logo: userResult.rows[0].company_logo_url,
+          address: userResult.rows[0].company_address,
+          phone: userResult.rows[0].company_phone,
+          email: userResult.rows[0].company_email || userResult.rows[0].email
+        },
+        services: servicesResult.rows.map(s => ({
+          id: s.id,
+          name: s.name,
+          default_price: parseFloat(s.default_price),
+          description: s.description
+        })),
+        bookingNames: bookingNamesResult.rows.map(r => r.booking_name)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching booking info by code:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch booking info'
+    });
+  }
+});
+
+// PUBLIC: Submit client booking by booking code (NEW - Secure Method)
+app.post('/api/public/booking/:bookingCode/submit', async (req, res) => {
+  try {
+    const { bookingCode } = req.params;
+    
+    // Get user by booking code
+    const userQuery = 'SELECT id FROM users WHERE booking_code = $1';
+    const userResult = await query(userQuery, [bookingCode]);
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Link booking tidak valid'
+      });
+    }
+    
+    const userId = userResult.rows[0].id;
+    
+    // Extract request data
+    const {
+      client_name,
+      client_phone,
+      client_country_code = '62',
+      client_address,
+      booking_name,
+      booking_date,
+      booking_date_end,
+      booking_time,
+      booking_time_end,
+      location_name,
+      location_map_url,
+      notes,
+      selected_services = []
+    } = req.body;
+
+    // Validate required fields
+    if (!client_name || !client_phone || !booking_date || selected_services.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nama, telepon, tanggal booking, dan minimal 1 layanan harus diisi'
+      });
+    }
+
+    // Format phone with country code
+    const fullPhone = `+${client_country_code}${client_phone}`;
+    
+    // Prepare services data
+    const servicesData = selected_services.map(s => ({
+      service_id: s.service_id || s.id,
+      service_name: s.service_name || s.name,
+      default_price: s.default_price || 0,
+      quantity: s.quantity || 1,
+      description: s.description || ''
+    }));
+
+    // Insert client submission
+    const insertQuery = `
+      INSERT INTO client_submissions (
+        user_id, client_name, contact, address, booking_name,
+        booking_date, booking_date_end, start_time, end_time,
+        location, location_map_url, services, notes, status,
+        created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending', NOW(), NOW())
+      RETURNING id
+    `;
+    
+    const result = await query(insertQuery, [
+      userId,
+      client_name,
+      fullPhone,
+      client_address || null,
+      booking_name || null,
+      booking_date,
+      booking_date_end || booking_date,
+      booking_time || null,
+      booking_time_end || null,
+      location_name || null,
+      location_map_url || null,
+      JSON.stringify(servicesData),
+      notes || null
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Booking berhasil dikirim! Kami akan segera menghubungi Anda.',
+      data: {
+        submission_id: result.rows[0].id
+      }
+    });
+  } catch (error) {
+    console.error('Error submitting booking by code:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gagal mengirim booking. Silakan coba lagi.'
+    });
+  }
+});
+
+// OLD ENDPOINTS - Keep for backward compatibility (DEPRECATED)
+// PUBLIC: Get user info and services for client booking form
+app.get('/api/public/user/:userId/booking-info', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    // Get user/company info
+    const userQuery = `
+      SELECT 
+        u.id, u.full_name, u.email,
+        cs.company_name, cs.company_logo_url, cs.company_address, cs.company_phone, cs.company_email
+      FROM users u
+      LEFT JOIN company_settings cs ON u.id = cs.user_id
+      WHERE u.id = $1
+    `;
+    const userResult = await query(userQuery, [userId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Get available services
+    const servicesQuery = `
+      SELECT id, name, price as default_price, description
+      FROM services
+      WHERE user_id = $1 AND is_active = true
+      ORDER BY name
+    `;
+    const servicesResult = await query(servicesQuery, [userId]);
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: userResult.rows[0].id,
+          name: userResult.rows[0].full_name,
+          companyName: userResult.rows[0].company_name || userResult.rows[0].full_name,
+          logo: userResult.rows[0].company_logo_url,
+          address: userResult.rows[0].company_address,
+          phone: userResult.rows[0].company_phone,
+          email: userResult.rows[0].company_email || userResult.rows[0].email
+        },
+        services: servicesResult.rows.map(s => ({
+          id: s.id,
+          name: s.name,
+          default_price: parseFloat(s.default_price),
+          description: s.description
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching booking info:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch booking info'
+    });
+  }
+});
+
+// PUBLIC: Get booking names for a user (for autocomplete)
+app.get('/api/public/user/:userId/booking-names', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    // Get distinct booking names from bookings table
+    const bookingNamesQuery = `
+      SELECT DISTINCT booking_name
+      FROM bookings
+      WHERE user_id = $1 AND booking_name IS NOT NULL AND booking_name != ''
+      ORDER BY booking_name
+      LIMIT 50
+    `;
+    const result = await query(bookingNamesQuery, [userId]);
+
+    res.json({
+      success: true,
+      data: result.rows.map(row => row.booking_name)
+    });
+  } catch (error) {
+    console.error('Error fetching booking names:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch booking names'
+    });
+  }
+});
+
+// PUBLIC: Submit booking from client (no authentication required)
+app.post('/api/public/client-submission', async (req, res) => {
+  try {
+    const {
+      user_id,
+      client_name,
+      client_phone,
+      client_country_code = '62',
+      client_address,
+      booking_name,
+      booking_date,
+      booking_date_end,
+      booking_time,
+      booking_time_end,
+      location_name,
+      location_map_url,
+      services,
+      notes
+    } = req.body;
+
+    // Validation
+    if (!user_id || !client_name || !client_phone || !booking_date) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID, client name, phone, and booking date are required'
+      });
+    }
+
+    if (!services || !Array.isArray(services) || services.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one service is required'
+      });
+    }
+
+    // Insert submission
+    const insertQuery = `
+      INSERT INTO client_submissions (
+        user_id, client_name, client_phone, client_country_code, client_address,
+        booking_name, booking_date, booking_date_end, booking_time, booking_time_end,
+        location_name, location_map_url, services, notes, status, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', NOW(), NOW())
+      RETURNING id, client_name, client_phone, booking_date, status, created_at
+    `;
+
+    const result = await query(insertQuery, [
+      user_id,
+      client_name,
+      client_phone,
+      client_country_code,
+      client_address || null,
+      booking_name || null,
+      booking_date,
+      booking_date_end || null,
+      booking_time || null,
+      booking_time_end || null,
+      location_name || null,
+      location_map_url || null,
+      JSON.stringify(services),
+      notes || null
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Booking submission sent successfully',
+      data: {
+        id: result.rows[0].id,
+        client_name: result.rows[0].client_name,
+        client_phone: result.rows[0].client_phone,
+        booking_date: result.rows[0].booking_date,
+        status: result.rows[0].status
+      }
+    });
+  } catch (error) {
+    console.error('Error creating client submission:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit booking'
+    });
+  }
+});
+
+// PROTECTED: Get all client submissions for a user
+app.get('/api/user/client-submissions', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { status, page = 1, pageSize = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+
+    let whereConditions = ['cs.user_id = $1'];
+    let queryParams = [userId];
+    let paramIndex = 2;
+
+    if (status) {
+      whereConditions.push(`cs.status = $${paramIndex}`);
+      queryParams.push(status);
+      paramIndex++;
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    const submissionsQuery = `
+      SELECT 
+        cs.id,
+        cs.booking_name,
+        cs.client_name,
+        cs.client_phone as contact,
+        cs.client_address as address,
+        to_char(cs.booking_date, 'YYYY-MM-DD') as booking_date,
+        to_char(cs.booking_date_end, 'YYYY-MM-DD') as booking_date_end,
+        to_char(cs.booking_time, 'HH24:MI') as start_time,
+        to_char(cs.booking_time_end, 'HH24:MI') as end_time,
+        cs.location_name as location,
+        cs.location_map_url,
+        cs.services,
+        cs.notes,
+        cs.status,
+        cs.created_at,
+        cs.updated_at
+      FROM client_submissions cs
+      WHERE ${whereClause}
+      ORDER BY 
+        CASE WHEN cs.status = 'pending' THEN 0 ELSE 1 END,
+        cs.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+
+    queryParams.push(parseInt(pageSize), offset);
+
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM client_submissions cs
+      WHERE ${whereClause}
+    `;
+
+    const [submissions, countResult] = await Promise.all([
+      query(submissionsQuery, queryParams),
+      query(countQuery, queryParams.slice(0, -2))
+    ]);
+
+    const total = parseInt(countResult.rows[0].total);
+
+    res.json({
+      success: true,
+      data: {
+        submissions: submissions.rows.map(s => ({
+          ...s,
+          services: typeof s.services === 'string' ? JSON.parse(s.services) : s.services
+        })),
+        pagination: {
+          total,
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          totalPages: Math.ceil(total / parseInt(pageSize))
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching client submissions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch client submissions'
+    });
+  }
+});
+
+// PROTECTED: Get pending submissions count
+app.get('/api/user/client-submissions/pending-count', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const countQuery = `
+      SELECT COUNT(*) as count
+      FROM client_submissions
+      WHERE user_id = $1 AND status = 'pending'
+    `;
+    
+    const result = await query(countQuery, [userId]);
+    
+    res.json({
+      success: true,
+      data: {
+        count: parseInt(result.rows[0].count)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching pending count:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch pending count'
+    });
+  }
+});
+
+// PROTECTED: Get single submission detail
+app.get('/api/user/client-submissions/:id', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const submissionId = req.params.id;
+
+    const submissionQuery = `
+      SELECT 
+        cs.id,
+        cs.user_id,
+        cs.booking_name,
+        cs.client_name,
+        cs.client_phone as contact,
+        cs.client_country_code,
+        cs.client_address as address,
+        to_char(cs.booking_date, 'YYYY-MM-DD') as booking_date,
+        to_char(cs.booking_date_end, 'YYYY-MM-DD') as booking_date_end,
+        to_char(cs.booking_time, 'HH24:MI') as start_time,
+        to_char(cs.booking_time_end, 'HH24:MI') as end_time,
+        cs.location_name as location,
+        cs.location_map_url,
+        cs.services,
+        cs.notes,
+        cs.status,
+        cs.created_at,
+        cs.updated_at
+      FROM client_submissions cs
+      WHERE cs.id = $1 AND cs.user_id = $2
+    `;
+
+    const result = await query(submissionQuery, [submissionId, userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+
+    const submission = result.rows[0];
+    submission.services = typeof submission.services === 'string' 
+      ? JSON.parse(submission.services) 
+      : submission.services;
+
+    res.json({
+      success: true,
+      data: submission
+    });
+  } catch (error) {
+    console.error('Error fetching submission:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch submission'
+    });
+  }
+});
+
+// PROTECTED: Confirm submission and create booking
+app.post('/api/user/client-submissions/:id/confirm', authenticate, enforceTenancy, async (req, res) => {
+  const dbClient = await require('./config/database').getClient();
+  
+  try {
+    await dbClient.query('BEGIN');
+    
+    const userId = req.user.id;
+    const submissionId = req.params.id;
+    
+    // Get ALL fields from request body
+    const {
+      booking_name,
+      client_name,
+      client_phone,
+      client_address,
+      booking_date,
+      booking_date_end,
+      booking_time,
+      booking_time_end,
+      booking_days,
+      location_name,
+      location_map_url,
+      services = [],
+      responsible_parties = [],
+      status = 'Dijadwalkan',
+      payment_status = 'Belum Bayar',
+      amount_paid = 0,
+      discount_value = 0,
+      discount_type = 'rupiah',
+      tax_percentage = 0,
+      additional_fees = [],
+      total_amount,
+      notes,
+      sync_to_google_calendar = false
+    } = req.body;
+
+    console.log('=== CONFIRM BOOKING REQUEST ===');
+    console.log('Submission ID:', submissionId);
+    console.log('User ID:', userId);
+    console.log('Booking name:', booking_name);
+    console.log('Services received:', services);
+    console.log('Total amount:', total_amount);
+
+    // Map payment status to English
+    const paymentStatusMap = {
+      'Belum Bayar': 'unpaid',
+      'Sudah Bayar': 'paid',
+      'Bayar Sebagian': 'partial'
+    };
+    const mappedPaymentStatus = paymentStatusMap[payment_status] || 'unpaid';
+
+    // Verify submission exists and is pending
+    const submissionQuery = `
+      SELECT id, status FROM client_submissions
+      WHERE id = $1 AND user_id = $2 AND status = 'pending'
+    `;
+    const submissionResult = await dbClient.query(submissionQuery, [submissionId, userId]);
+
+    if (submissionResult.rows.length === 0) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        message: 'Pending submission not found'
+      });
+    }
+
+    console.log('Submission verified, proceeding with booking creation...');
+
+    // Validate required fields from request
+    if (!client_name || !client_phone || !booking_date) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'Client name, phone, and booking date are required'
+      });
+    }
+
+    if (!services || services.length === 0) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'At least one service is required'
+      });
+    }
+
+    // Find or create client using data from REQUEST (not old submission)
+    let clientId;
+    const existingClient = await dbClient.query(
+      'SELECT id FROM clients WHERE user_id = $1 AND phone = $2',
+      [userId, client_phone]
+    );
+
+    if (existingClient.rows.length > 0) {
+      clientId = existingClient.rows[0].id;
+      // Update client info from REQUEST
+      await dbClient.query(
+        'UPDATE clients SET name = $1, address = $2, updated_at = NOW() WHERE id = $3',
+        [client_name, client_address, clientId]
+      );
+    } else {
+      // Create new client from REQUEST
+      const newClient = await dbClient.query(
+        `INSERT INTO clients (user_id, name, phone, address, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id`,
+        [userId, client_name, client_phone, client_address]
+      );
+      clientId = newClient.rows[0].id;
+    }
+
+    console.log('Client ID:', clientId);
+
+    // Use total_amount from REQUEST if provided, otherwise calculate
+    let finalTotalAmount = total_amount;
+    if (!finalTotalAmount || finalTotalAmount === 0) {
+      // Calculate totals from services
+      let subtotal = 0;
+      services.forEach(s => {
+        const price = s.custom_price || s.default_price || 0;
+        const qty = s.quantity || 1;
+        subtotal += price * qty;
+      });
+
+      // Apply discount
+      let discountAmount = 0;
+      if (discount_value > 0) {
+        if (discount_type === 'persen') {
+          discountAmount = (subtotal * discount_value) / 100;
+        } else {
+          discountAmount = discount_value;
+        }
+      }
+      const afterDiscount = subtotal - discountAmount;
+
+      // Apply tax
+      const taxAmount = afterDiscount * (tax_percentage / 100);
+
+      // Add additional fees
+      const feesTotal = additional_fees.reduce((sum, f) => sum + (parseFloat(f.amount) || 0), 0);
+
+      finalTotalAmount = afterDiscount + taxAmount + feesTotal;
+    }
+
+    console.log('Final total amount:', finalTotalAmount);
+
+    // Get first service ID for main booking
+    const mainServiceId = services[0]?.service_id || services[0]?.id;
+    console.log('Main service ID:', mainServiceId, 'Services:', services);
+    
+    if (!mainServiceId) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'No valid service found in services array'
+      });
+    }
+
+    // Map status to database format
+    const statusMap = {
+      'Dijadwalkan': 'confirmed',
+      'Selesai': 'completed',
+      'Dibatalkan': 'cancelled'
+    };
+    const dbStatus = statusMap[status] || 'confirmed';
+
+    // Fetch full responsible party data if IDs provided
+    let responsiblePartiesData = [];
+    if (responsible_parties && responsible_parties.length > 0) {
+      const rpQuery = `
+        SELECT id, name, phone, address 
+        FROM responsible_parties 
+        WHERE id = ANY($1) AND user_id = $2
+      `;
+      const rpResult = await dbClient.query(rpQuery, [responsible_parties, userId]);
+      responsiblePartiesData = rpResult.rows;
+      console.log('Responsible parties loaded:', responsiblePartiesData.length);
+    }
+
+    // Create comprehensive booking notes JSON with ALL data
+    const bookingNotes = JSON.stringify({
+      // Original submission data
+      from_client_submission: true,
+      submission_id: submissionId,
+      
+      // Booking details from REQUEST
+      booking_date_end: booking_date_end,
+      booking_time_end: booking_time_end,
+      booking_days: booking_days || 1,
+      
+      // Services with complete details from REQUEST
+      services: services.map(s => ({
+        service_id: s.service_id,
+        service_name: s.service_name,
+        custom_price: s.custom_price,
+        quantity: s.quantity,
+        responsible_party_id: s.responsible_party_id,
+        description: s.description
+      })),
+      
+      // Financial details
+      discount: {
+        value: discount_value,
+        type: discount_type
+      },
+      tax: {
+        percentage: tax_percentage
+      },
+      additional_fees: additional_fees || [],
+      
+      // Responsible parties - FULL OBJECTS with name, phone, address
+      responsible_parties: responsiblePartiesData,
+      
+      // Notes from REQUEST
+      notes: notes,
+      
+      // Google Calendar sync flag
+      sync_to_google_calendar: sync_to_google_calendar
+    });
+
+    console.log('Creating booking with notes:', bookingNotes);
+
+    // Create booking with ALL fields from REQUEST
+    let bookingId;
+    try {
+      const bookingQuery = `
+        INSERT INTO bookings (
+          user_id, client_id, service_id,
+          booking_name, booking_date, booking_time,
+          location_name, location_map_url,
+          status, total_price, notes,
+          created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+        RETURNING id
+      `;
+      const bookingResult = await dbClient.query(bookingQuery, [
+        userId,
+        clientId,
+        mainServiceId,
+        booking_name,  // From REQUEST, not submission
+        booking_date,  // From REQUEST
+        booking_time,  // From REQUEST
+        location_name,  // From REQUEST
+        location_map_url,  // From REQUEST
+        dbStatus,
+        finalTotalAmount,
+        bookingNotes
+      ]);
+      bookingId = bookingResult.rows[0].id;
+      console.log('Booking created with ID:', bookingId);
+    } catch (bookingError) {
+      console.error('Error creating booking:', bookingError);
+      throw bookingError;
+    }
+
+    // Create payment record
+    const paymentQuery = `
+      INSERT INTO payments (booking_id, payment_status, amount, payment_date, created_at, updated_at)
+      VALUES ($1, $2, $3, NOW(), NOW(), NOW())
+    `;
+    await dbClient.query(paymentQuery, [bookingId, mappedPaymentStatus, amount_paid]);
+
+    // Update submission status
+    await dbClient.query(
+      `UPDATE client_submissions 
+       SET status = 'confirmed', updated_at = NOW()
+       WHERE id = $1`,
+      [submissionId]
+    );
+
+    await dbClient.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: 'Submission confirmed and booking created',
+      data: {
+        booking_id: bookingId,
+        client_id: clientId
+      }
+    });
+  } catch (error) {
+    await dbClient.query('ROLLBACK');
+    console.error('Error confirming submission:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to confirm submission: ' + error.message
+    });
+  } finally {
+    dbClient.release();
+  }
+});
+
+// PROTECTED: Reject submission
+app.post('/api/user/client-submissions/:id/reject', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const submissionId = req.params.id;
+    const { reason } = req.body;
+
+    const updateQuery = `
+      UPDATE client_submissions
+      SET status = 'rejected', notes = COALESCE(notes, '') || E'\n\n[REJECTED]: ' || $3, updated_at = NOW()
+      WHERE id = $1 AND user_id = $2 AND status = 'pending'
+      RETURNING id
+    `;
+
+    const result = await query(updateQuery, [submissionId, userId, reason || 'No reason provided']);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pending submission not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Submission rejected'
+    });
+  } catch (error) {
+    console.error('Error rejecting submission:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject submission'
+    });
+  }
+});
+
+// PROTECTED: Delete submission
+app.delete('/api/user/client-submissions/:id', authenticate, enforceTenancy, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const submissionId = req.params.id;
+
+    const deleteQuery = `
+      DELETE FROM client_submissions
+      WHERE id = $1 AND user_id = $2
+      RETURNING id
+    `;
+
+    const result = await query(deleteQuery, [submissionId, userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Submission deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting submission:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete submission'
     });
   }
 });

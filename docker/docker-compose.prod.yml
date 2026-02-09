@@ -1,0 +1,78 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: catatjasamu-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: catat_jasamu_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ../backend/src/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - catatjasamu-network-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: catatjasamu-backend-prod
+    restart: unless-stopped
+    environment:
+      PORT: 5001
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: catat_jasamu_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE: 7d
+      FRONTEND_URL: ${FRONTEND_URL}
+      BACKEND_URL: ${BACKEND_URL}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALENDAR_CLIENT_ID: ${GOOGLE_CALENDAR_CLIENT_ID}
+      GOOGLE_CALENDAR_CLIENT_SECRET: ${GOOGLE_CALENDAR_CLIENT_SECRET}
+      GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - catatjasamu-network-prod
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+
+  # Frontend
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    container_name: catatjasamu-frontend-prod
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL}
+    networks:
+      - catatjasamu-network-prod
+    volumes:
+      - ../frontend/dist:/usr/share/nginx/html
+
+networks:
+  catatjasamu-network-prod:
+    driver: bridge
+
+volumes:
+  postgres_data_prod:
+    driver: local

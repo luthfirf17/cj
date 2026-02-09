@@ -1,0 +1,25 @@
+# Development override for docker-compose.yml
+# This file is automatically merged with docker-compose.yml when running in development
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: 1234
+    ports:
+      - "5433:5432"
+
+  backend:
+    environment:
+      FRONTEND_URL: http://localhost:3000
+      BACKEND_URL: http://localhost:5001
+      GOOGLE_CALLBACK_URL: http://localhost:5001/api/auth/google/callback
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-your_google_client_id_here}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-your_google_client_secret_here}
+      DB_PASSWORD: 1234
+      JWT_SECRET: catat-jasamu-secret-key-2025
+    ports:
+      - "5001:5001"
+
+  frontend:
+    ports:
+      - "3000:80"
