@@ -44,13 +44,16 @@ services:
       GOOGLE_CALENDAR_CLIENT_ID: ${GOOGLE_CALENDAR_CLIENT_ID}
       GOOGLE_CALENDAR_CLIENT_SECRET: ${GOOGLE_CALENDAR_CLIENT_SECRET}
       GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-https://catatjasamu.com/api/user/google-calendar/callback}
+    ports:
+      - "5001:5001"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - catatjasamu-network
 
-  # Frontend (Nginx serves static + reverse proxy to backend)
+  # Frontend (Nginx serves static + reverse proxy to backend inside Docker)
+  # Note: Host Nginx handles SSL termination and proxies to port 3000
   frontend:
     build:
       context: ../frontend
@@ -60,24 +63,9 @@ services:
     container_name: catatjasamu-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "3000:80"
     depends_on:
       - backend
-    networks:
-      - catatjasamu-network
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - certbot-webroot:/var/www/certbot:ro
-
-  # Certbot for SSL certificates
-  certbot:
-    image: certbot/certbot
-    container_name: catatjasamu-certbot
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt
-      - certbot-webroot:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
     networks:
       - catatjasamu-network
 
@@ -87,6 +75,4 @@ networks:
 
 volumes:
   postgres_data:
-    driver: local
-  certbot-webroot:
     driver: local
