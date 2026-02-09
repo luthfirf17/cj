@@ -317,7 +317,27 @@ app.get('/api/auth/google',
 
 // Google OAuth callback route
 app.get('/api/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login?error=oauth_failed' }),
+  (req, res, next) => {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://catatjasamu.com';
+    passport.authenticate('google', (err, user, info) => {
+      if (err) {
+        console.error('Google OAuth authentication error:', err);
+        return res.redirect(`${frontendUrl}/login?error=oauth_error&message=${encodeURIComponent('Terjadi kesalahan saat login dengan Google. Silakan coba lagi.')}`);
+      }
+      if (!user) {
+        console.error('Google OAuth: No user returned', info);
+        return res.redirect(`${frontendUrl}/login?error=oauth_failed&message=${encodeURIComponent('Login Google gagal. Silakan coba lagi.')}`);
+      }
+      req.logIn(user, (loginErr) => {
+        if (loginErr) {
+          console.error('Google OAuth login error:', loginErr);
+          return res.redirect(`${frontendUrl}/login?error=oauth_error`);
+        }
+        // Continue to the callback handler
+        next();
+      });
+    })(req, res, next);
+  },
   async (req, res) => {
     try {
       console.log('OAuth callback successful, user:', req.user);
