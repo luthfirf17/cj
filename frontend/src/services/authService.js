@@ -52,17 +52,14 @@ const authService = {
     localStorage.removeItem('user_created_at');
     localStorage.removeItem('onboarding_completed');
     
-    // Clear sessionStorage as well
-    sessionStorage.clear();
+    // Clear sessionStorage as well (except logged_out flag)
+    const keys = Object.keys(sessionStorage);
+    keys.forEach(key => {
+      if (key !== 'logged_out') sessionStorage.removeItem(key);
+    });
     
     // Set flag to indicate logout
     sessionStorage.setItem('logged_out', 'true');
-    
-    // Replace current history state to prevent back button
-    window.history.replaceState(null, '', '/login');
-    
-    // Navigate to login
-    window.location.href = '/login';
   },
 
   /**
@@ -70,12 +67,10 @@ const authService = {
    */
   getProfile: async () => {
     try {
-      const response = await api.get('/user/profile');
-      
+      const response = await api.get('/auth/profile');
       if (response.data.success) {
         authService.setUser(response.data.data);
       }
-      
       return response.data;
     } catch (error) {
       throw error.response?.data || { success: false, message: 'Terjadi kesalahan' };

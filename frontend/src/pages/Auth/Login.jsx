@@ -21,14 +21,15 @@ const Login = () => {
 
   // Check if user is already authenticated on component mount
   useEffect(() => {
+    // Clear logout flag when Login page loads
+    authService.clearLogoutFlag();
+    
     const checkAuth = async () => {
       if (authService.isAuthenticated()) {
         try {
-          // Verify token is still valid
           const result = await authService.verifyToken();
           if (result.success) {
             const user = result.data.user;
-            // Redirect based on role
             if (user.role === 'admin') {
               navigate('/admin/dashboard', { replace: true });
             } else {
@@ -37,16 +38,19 @@ const Login = () => {
             return;
           }
         } catch (error) {
-          // Token is invalid, logout
-          authService.logout();
+          // Token is invalid, clear it
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('user_data');
         }
       }
     };
 
-    checkAuth();
+    // Only auto-check if there's no OAuth params in URL
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('token') && !params.get('error')) {
+      checkAuth();
+    }
   }, [navigate]);
-
-  // Handle OAuth callback
 
   // Handle OAuth callback
   useEffect(() => {
@@ -161,7 +165,8 @@ const Login = () => {
 
   const handleGoogleSignIn = () => {
     // Redirect to Google OAuth LOGIN endpoint (for existing users)
-    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/auth/google/login`;
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    window.location.href = `${apiUrl}/api/auth/google/login`;
   };
 
   return (

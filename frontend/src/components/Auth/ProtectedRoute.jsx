@@ -1,6 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
+
+// Module-level singleton to prevent duplicate verify calls across instances
+let verifyPromise = null;
+let lastVerifyTime = 0;
+const VERIFY_COOLDOWN = 30000; // 30 seconds cooldown between verifications
+
+const cachedVerifyToken = async () => {
+  const now = Date.now();
+  
+  // Return cached result if within cooldown
+  if (verifyPromise && (now - lastVerifyTime) < VERIFY_COOLDOWN) {
+    return verifyPromise;
+  }
+  
+  lastVerifyTime = now;
+  verifyPromise = authService.verifyToken()
+    .then(result => {
+      return result;
+    })
+    .catch(error => {
+      verifyPromise = null; // Clear cache on error
+      throw error;
+    });
+  
+  return verifyPromise;
+};
+
+// Reset verify cache (called on logout)
+export const resetVerifyCache = () => {
+  verifyPromise = null;
+  lastVerifyTime = 0;
+};
 
 /**
  * Protected Route Component
@@ -12,15 +44,18 @@ const ProtectedRoute = () => {
   const navigate = useNavigate();
   const [isVerifying, setIsVerifying] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const hasVerified = useRef(false);
 
   useEffect(() => {
+    // Prevent double-mount verification (React StrictMode)
+    if (hasVerified.current) return;
+    
     const verifyAuth = async () => {
       try {
         // Check if user has logged out (prevents back button access)
         if (sessionStorage.getItem('logged_out') === 'true') {
           setIsAuthenticated(false);
           setIsVerifying(false);
-          // Clear any remaining token
           localStorage.removeItem('auth_token');
           localStorage.removeItem('user_data');
           return;
@@ -33,25 +68,24 @@ const ProtectedRoute = () => {
           return;
         }
 
-        // For now, assume user is authenticated if token exists
-        // This prevents logout on refresh due to temporary network issues
+        // Token exists - allow access immediately
         setIsAuthenticated(true);
         setIsVerifying(false);
+        hasVerified.current = true;
 
-        // Optionally verify token in background (don't block UI)
+        // Background verify with deduplication (don't block UI)
         try {
-          await authService.verifyToken();
-          // Token is valid, keep user authenticated
+          await cachedVerifyToken();
         } catch (error) {
-          // If token verification fails, check if it's a 401 (invalid token)
           if (error.response?.status === 401) {
-            console.warn('Token verification failed - token is invalid, logging out');
-            authService.logout();
+            console.warn('Token invalid, clearing auth state');
+            resetVerifyCache();
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_data');
+            sessionStorage.setItem('logged_out', 'true');
             setIsAuthenticated(false);
-          } else {
-            // Network/server error - keep user logged in
-            console.warn('Token verification failed due to network/server error - keeping user logged in');
           }
+          // Network errors: keep user logged in
         }
       } catch (error) {
         console.error('Auth verification failed:', error);
@@ -61,12 +95,11 @@ const ProtectedRoute = () => {
     };
 
     verifyAuth();
-  }, [location.pathname]); // Re-verify when route changes
+  }, []); // Only verify once on mount, NOT on every route change
 
-  // Handle browser back button - listen for popstate
+  // Handle browser back button
   useEffect(() => {
     const handlePopState = () => {
-      // Check if logged out when navigating via back button
       if (sessionStorage.getItem('logged_out') === 'true') {
         navigate('/login', { replace: true });
       }

@@ -2,17 +2,17 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: catatjasamu-postgres-prod
+    container_name: catatjasamu-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: catat_jasamu_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - postgres_data_prod:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ../backend/src/migrations:/docker-entrypoint-initdb.d
     networks:
-      - catatjasamu-network-prod
+      - catatjasamu-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -24,7 +24,7 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    container_name: catatjasamu-backend-prod
+    container_name: catatjasamu-backend
     restart: unless-stopped
     environment:
       PORT: 5001
@@ -36,43 +36,57 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRE: 7d
-      FRONTEND_URL: ${FRONTEND_URL}
-      BACKEND_URL: ${BACKEND_URL}
-      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      FRONTEND_URL: ${FRONTEND_URL:-https://catatjasamu.com}
+      BACKEND_URL: ${BACKEND_URL:-https://catatjasamu.com}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-https://catatjasamu.com/api/auth/google/callback}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_CALENDAR_CLIENT_ID: ${GOOGLE_CALENDAR_CLIENT_ID}
       GOOGLE_CALENDAR_CLIENT_SECRET: ${GOOGLE_CALENDAR_CLIENT_SECRET}
-      GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI}
+      GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-https://catatjasamu.com/api/user/google-calendar/callback}
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - catatjasamu-network-prod
-    volumes:
-      - ../backend:/app
-      - /app/node_modules
+      - catatjasamu-network
 
-  # Frontend
+  # Frontend (Nginx serves static + reverse proxy to backend)
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL}
-    container_name: catatjasamu-frontend-prod
+        VITE_API_URL: ""
+    container_name: catatjasamu-frontend
     restart: unless-stopped
-    environment:
-      VITE_API_URL: ${VITE_API_URL}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
     networks:
-      - catatjasamu-network-prod
+      - catatjasamu-network
     volumes:
-      - ../frontend/dist:/usr/share/nginx/html
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot:ro
+
+  # Certbot for SSL certificates
+  certbot:
+    image: certbot/certbot
+    container_name: catatjasamu-certbot
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
+    networks:
+      - catatjasamu-network
 
 networks:
-  catatjasamu-network-prod:
+  catatjasamu-network:
     driver: bridge
 
 volumes:
-  postgres_data_prod:
+  postgres_data:
+    driver: local
+  certbot-webroot:
     driver: local

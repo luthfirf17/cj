@@ -167,7 +167,8 @@ const Register = () => {
 
   const handleGoogleSignIn = () => {
     // Redirect to Google OAuth REGISTER endpoint (for new users)
-    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/auth/google/register`;
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    window.location.href = `${apiUrl}/api/auth/google/register`;
   };
 
   return (

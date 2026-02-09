@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { FiUser, FiPhone, FiMapPin, FiCalendar, FiClock, FiPlus, FiMinus, FiCheck, FiPackage, FiFileText, FiX, FiSearch, FiChevronDown, FiTag } from 'react-icons/fi';
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001') + '/api';
+const API_URL = (import.meta.env.VITE_API_URL || '') + '/api';
 
 const ClientBooking = () => {
   const { userId, bookingCode } = useParams(); // Support both old userId and new bookingCode

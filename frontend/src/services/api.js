@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001') + '/api';
+const API_URL = (import.meta.env.VITE_API_URL || '') + '/api';
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_data';
 
@@ -65,12 +65,15 @@ api.interceptors.response.use(
       switch (response.status) {
         case 401:
           // Unauthorized - Token expired or invalid
-          console.warn('[Auth] Token expired or invalid. Redirecting to login...');
+          console.warn('[Auth] Token expired or invalid.');
           
-          // Don't auto-redirect for certain endpoints
+          // Don't auto-redirect for auth-related endpoints - let callers handle it
           const skipAutoLogoutUrls = [
             '/auth/verify',
-            '/google-calendar/'  // Google Calendar endpoints should handle their own auth errors
+            '/auth/profile',
+            '/auth/login',
+            '/auth/register',
+            '/google-calendar/'
           ];
           
           const shouldSkipLogout = skipAutoLogoutUrls.some(url => error.config?.url?.includes(url));
@@ -79,9 +82,10 @@ api.interceptors.response.use(
             localStorage.removeItem(TOKEN_KEY);
             localStorage.removeItem(USER_KEY);
             
-            // Only redirect if not already on login page
+            // Use React navigation instead of full page reload
             if (!window.location.pathname.includes('/login')) {
-              window.location.href = '/login';
+              sessionStorage.setItem('logged_out', 'true');
+              window.location.replace('/login');
             }
           }
           break;

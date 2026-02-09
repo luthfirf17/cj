@@ -14,8 +14,8 @@ RUN npm ci
 COPY . .
 
 # Set environment variable for build
-ARG VITE_API_URL=https://catatjasamu.com/api
-ARG NGINX_CONF=nginx.conf
+# Empty VITE_API_URL = same origin (nginx will proxy /api to backend)
+ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build the application
@@ -25,14 +25,13 @@ RUN npm run build
 FROM nginx:alpine
 
 # Copy nginx configuration
-ARG NGINX_CONF=nginx.conf
-COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built application from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Expose port
-EXPOSE 80
+EXPOSE 80 443
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
