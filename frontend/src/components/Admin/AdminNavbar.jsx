@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiMenu, FiBell, FiUser } from 'react-icons/fi';
+import { FiMenu, FiBell, FiUser, FiShield, FiFileText } from 'react-icons/fi';
 import Logo from '../Common/Logo';
 
 const AdminNavbar = ({ onMenuClick, onToggleSidebar, isSidebarCollapsed }) => {
@@ -212,18 +212,28 @@ const AdminNavbar = ({ onMenuClick, onToggleSidebar, isSidebarCollapsed }) => {
 
                     <button
                       onClick={() => {
+                        navigate('/user/privacy-policy');
                         setShowProfileMenu(false);
-                        // Quick system status check
-                        alert('🔍 System Status Check:\n\n✅ All systems operational\n✅ Security protocols active\n✅ Database connection stable\n✅ API endpoints responding\n\nSystem Health: EXCELLENT');
                       }}
-                      className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-emerald-300 hover:bg-slate-700/50 transition-all duration-300 rounded-xl mx-2 w-full text-left group"
+                      className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-blue-300 hover:bg-slate-700/50 transition-all duration-300 rounded-xl mx-2 w-full text-left group"
                     >
-                      <div className="w-8 h-8 bg-slate-700/50 rounded-lg flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                      <div className="w-8 h-8 bg-slate-700/50 rounded-lg flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+                        <FiShield size={16} />
                       </div>
-                      <span className="font-medium">System Status</span>
+                      <span className="font-medium">Privacy Policy</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        navigate('/user/terms-of-service');
+                        setShowProfileMenu(false);
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-green-300 hover:bg-slate-700/50 transition-all duration-300 rounded-xl mx-2 w-full text-left group"
+                    >
+                      <div className="w-8 h-8 bg-slate-700/50 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
+                        <FiFileText size={16} />
+                      </div>
+                      <span className="font-medium">Terms of Service</span>
                     </button>
 
                     <hr className="my-2 border-slate-700/50 mx-4" />

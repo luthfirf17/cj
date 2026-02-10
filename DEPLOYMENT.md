@@ -538,3 +538,6 @@ Saat masih mode Testing, hanya email yang ada di daftar **Test Users** yang bisa
 > **📞 Bantuan:** Jika ada masalah, selalu cek logs dulu:  
 > `docker logs catatjasamu-backend --tail 50`  
 > Ini akan menunjukkan error yang terjadi.
+
+
+anda adalah seorang Programmer yang sangat Paham dan ahli di bidang FULLSTACK dan anda juga sangat Ahli dalam mengelola VPS

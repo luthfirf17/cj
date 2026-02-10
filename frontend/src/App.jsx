@@ -23,6 +23,8 @@ import SettingsPage from './pages/User/SettingsPage'
 import BackupDataPage from './pages/User/BackupDataPage'
 import ClientSubmissionsPage from './pages/User/ClientSubmissionsPage'
 import ClientsPage from './pages/User/ClientsPage'
+import PrivacyPolicy from './pages/User/PrivacyPolicy'
+import TermsOfService from './pages/User/TermsOfService'
 // import UserProfile from './pages/User/Profile'
 // ... other user pages
 
@@ -94,6 +96,10 @@ function App() {
               
               {/* Settings */}
               <Route path="settings" element={<SettingsPage />} />
+              
+              {/* Legal Pages */}
+              <Route path="privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="terms-of-service" element={<TermsOfService />} />
             </Route>
           </Route>
         </Route>

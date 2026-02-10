@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiUser, FiLock, FiMail, FiSave, FiX, FiEye, FiEyeOff, FiArrowLeft } from 'react-icons/fi';
+import { FiUser, FiLock, FiMail, FiSave, FiX, FiEye, FiEyeOff, FiArrowLeft, FiShield, FiFileText } from 'react-icons/fi';
 import api from '../../services/api';
 import ResetPasswordWithPinModal from '../../components/Common/ResetPasswordWithPinModal';
 
@@ -417,6 +417,8 @@ const SettingsPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 sm:p-4 md:p-6">
       <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+        {/* Debug: Console log untuk memastikan SettingsPage dimuat */}
+        {console.log('SettingsPage rendered with privacy policy section')}
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-4">
@@ -947,6 +949,66 @@ const SettingsPage = () => {
               </button>
             </div>
           </form>
+        </div>
+
+        {/* Privacy Policy & Terms of Service Card */}
+        {console.log('Privacy Policy section rendering')}
+        <div className="bg-white rounded-lg sm:rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+            <div className="flex items-center gap-2 sm:gap-3 text-white">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                <FiShield className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              </div>
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold">Kebijakan & Syarat</h2>
+                <p className="text-xs sm:text-sm text-purple-100">Informasi penting tentang privasi dan penggunaan</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3 sm:p-4 md:p-6 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              {/* Privacy Policy Button */}
+              <button
+                onClick={() => navigate('/user/privacy-policy')}
+                className="group p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg hover:from-blue-100 hover:to-indigo-100 transition-all duration-200 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                    <FiShield className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 text-sm sm:text-base">Kebijakan Privasi</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">Pelajari bagaimana kami melindungi data Anda</p>
+                  </div>
+                </div>
+              </button>
+
+              {/* Terms of Service Button */}
+              <button
+                onClick={() => navigate('/user/terms-of-service')}
+                className="group p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg hover:from-green-100 hover:to-emerald-100 transition-all duration-200 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                    <FiFileText className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 text-sm sm:text-base">Syarat & Ketentuan</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">Aturan penggunaan aplikasi ini</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Info Box */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 sm:p-4">
+              <p className="text-sm text-gray-700">
+                <strong>📋 Informasi:</strong> Dokumen ini diperlukan untuk mematuhi kebijakan Google dan melindungi hak pengguna. 
+                Jika Anda memiliki pertanyaan, silakan hubungi tim dukungan kami.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

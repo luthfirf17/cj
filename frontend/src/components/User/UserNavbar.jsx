@@ -8,7 +8,8 @@ import {
   FiLogOut,
   FiHome,
   FiClipboard,
-  FiUsers
+  FiUsers,
+  FiFileText
 } from 'react-icons/fi';
 import authService from '../../services/authService';
 import api from '../../services/api';
@@ -341,6 +342,42 @@ const UserNavbar = () => {
                 <FiSettings size={20} className="transition-transform duration-300 group-hover:rotate-90" />
               </div>
               <span className="relative z-10 flex-1 font-medium text-[15px]">Pengaturan</span>
+            </button>
+
+            {/* Privacy Policy */}
+            <button
+              onClick={() => {
+                navigate('/user/privacy-policy');
+                setIsDropdownOpen(false);
+              }}
+              className="group w-full flex items-center gap-4 px-5 py-3.5 text-left text-gray-700 
+                hover:bg-white active:bg-gray-100 transition-all duration-200 touch-manipulation relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-blue-500/10 
+                transform scale-x-0 group-active:scale-x-100 transition-transform duration-300 origin-left" 
+              />
+              <div className="relative z-10 p-2 rounded-lg bg-gray-100 text-gray-500 group-hover:bg-gray-200 transition-colors duration-200">
+                <FiShield size={20} className="transition-transform duration-200 group-hover:scale-110" />
+              </div>
+              <span className="relative z-10 flex-1 font-medium text-[15px]">Kebijakan Privasi</span>
+            </button>
+
+            {/* Terms of Service */}
+            <button
+              onClick={() => {
+                navigate('/user/terms-of-service');
+                setIsDropdownOpen(false);
+              }}
+              className="group w-full flex items-center gap-4 px-5 py-3.5 text-left text-gray-700 
+                hover:bg-white active:bg-gray-100 transition-all duration-200 touch-manipulation relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-green-500/5 to-green-500/10 
+                transform scale-x-0 group-active:scale-x-100 transition-transform duration-300 origin-left" 
+              />
+              <div className="relative z-10 p-2 rounded-lg bg-gray-100 text-gray-500 group-hover:bg-gray-200 transition-colors duration-200">
+                <FiFileText size={20} className="transition-transform duration-200 group-hover:scale-110" />
+              </div>
+              <span className="relative z-10 flex-1 font-medium text-[15px]">Syarat & Ketentuan</span>
             </button>
 
             {/* Logout with red accent */}
