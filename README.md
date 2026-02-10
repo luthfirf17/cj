@@ -55,16 +55,18 @@ npm run dev  # Backend
 cd ../frontend && npm run dev  # Frontend
 ```
 
-## 📚 Dokumentasi Lengkap
+## 📚 Dokumentasi
 
-📖 **[Baca Dokumentasi Lengkap](docs/)** - Semua panduan, API docs, dan troubleshooting
+### 🔥 Wajib Baca
+- 🚀 **[Panduan Deployment & Update](DEPLOYMENT.md)** — Aturan update kode, cara deploy, perintah VPS, troubleshooting
+- 📋 **[Environment Variables](docker/.env.example)** — Template konfigurasi environment
 
-### Quick Links
-- 🚀 **[Panduan Deployment](docs/DEPLOYMENT_GUIDE.md)** - Deploy ke production
-- 🔧 **[Setup Guide](docs/setup/INSTALLATION.md)** - Instalasi lengkap
-- 🔌 **[API Documentation](docs/api/API_OVERVIEW.md)** - API reference
-- 🏗️ **[Architecture](docs/architecture/STRUKTUR_APLIKASI.md)** - System design
-- 🔐 **[Security Guide](docs/security/AUTHENTICATION_GUIDE.md)** - Authentication & security
+### Dokumentasi Lainnya
+- 📖 **[Dokumentasi Lengkap](docs/)** — Semua panduan, API docs, dan troubleshooting
+- 🔧 **[Setup Guide](docs/setup/INSTALLATION.md)** — Instalasi lengkap
+- 🔌 **[API Documentation](docs/api/API_OVERVIEW.md)** — API reference
+- 🏗️ **[Architecture](docs/architecture/STRUKTUR_APLIKASI.md)** — System design
+- 🔐 **[Security Guide](docs/security/AUTHENTICATION_GUIDE.md)** — Authentication & security
 
 ## 👨‍💻 Author
 
