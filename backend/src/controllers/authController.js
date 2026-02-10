@@ -106,7 +106,7 @@ const login = async (req, res) => {
 
     // Find user by email
     const result = await client.query(
-      `SELECT id, full_name, email, password, phone, role, created_at
+      `SELECT id, full_name, email, password, phone, role, auth_provider, avatar_url, booking_code, created_at
        FROM users
        WHERE email = $1`,
       [email.toLowerCase()]
@@ -146,9 +146,13 @@ const login = async (req, res) => {
         user: {
           id: user.id,
           full_name: user.full_name,
+          name: user.full_name,
           email: user.email,
           phone: user.phone,
           role: user.role,
+          auth_provider: user.auth_provider || 'local',
+          avatar_url: user.avatar_url,
+          booking_code: user.booking_code,
           created_at: user.created_at
         },
         token
@@ -176,7 +180,9 @@ const getProfile = async (req, res) => {
     const userId = req.user.id;
 
     const result = await client.query(
-      `SELECT id, full_name, email, phone, role, created_at, updated_at
+      `SELECT id, full_name, full_name AS name, email, phone, role, 
+              auth_provider, avatar_url, google_email, booking_code,
+              created_at, updated_at
        FROM users
        WHERE id = $1`,
       [userId]

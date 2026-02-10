@@ -167,11 +167,11 @@ const UserNavbar = () => {
           <div className="flex flex-1 justify-center px-1 xs:px-2 sm:px-4 min-w-0">
             {/* Mobile: Show "Halo, FirstName" */}
             <span className="sm:hidden text-[11px] xs:text-xs text-white/90 font-medium truncate">
-              Halo, {getFirstName(user?.name)}
+              Halo, {getFirstName(user?.name || user?.full_name)}
             </span>
             {/* Tablet+: Show full name */}
             <span className="hidden sm:block text-sm md:text-base lg:text-lg text-white/90 font-medium truncate">
-              Halo, {user?.name || 'User'}
+              Halo, {user?.name || user?.full_name || 'User'}
             </span>
           </div>
 
@@ -250,11 +250,11 @@ const UserNavbar = () => {
           <div className="bg-gradient-to-r from-[#1a2744] to-[#2c3e63] px-4 py-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg ring-2 ring-white/20">
-                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                {(user?.name || user?.full_name)?.charAt(0)?.toUpperCase() || 'U'}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white font-semibold truncate text-base">
-                  {user?.name || 'User'}
+                  {user?.name || user?.full_name || 'User'}
                 </p>
                 <p className="text-white/70 text-sm truncate">
                   {user?.email || ''}

@@ -122,9 +122,15 @@ const GoogleCalendar = ({ isOpen, onClose }) => {
       const user = authService.getCurrentUser();
       console.log('🔍 Google Calendar - Current user:', user);
 
-      if (user && user.auth_provider === 'google') {
+      // Check if user logged in via Google (check both auth_provider and provider fields)
+      const isGoogleUser = user && (
+        user.auth_provider === 'google' || 
+        user.provider === 'google'
+      );
+      
+      if (isGoogleUser) {
         setIsAuthenticated(true);
-        setUserEmail(user.email || '');
+        setUserEmail(user.email || user.google_email || '');
         await checkCalendarConnection();
       } else {
         setIsAuthenticated(false);

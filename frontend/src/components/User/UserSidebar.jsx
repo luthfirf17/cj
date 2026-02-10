@@ -150,7 +150,7 @@ const UserSidebar = ({ isCollapsed, onToggleCollapse }) => {
           {isCollapsed ? (
             <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-xl flex items-center justify-center ring-2 ring-white/20">
               <span className="text-white font-bold text-sm">
-                {user?.name?.charAt(0)?.toUpperCase() || 'C'}
+                {(user?.name || user?.full_name)?.charAt(0)?.toUpperCase() || 'C'}
               </span>
             </div>
           ) : (
@@ -159,12 +159,12 @@ const UserSidebar = ({ isCollapsed, onToggleCollapse }) => {
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-xl flex items-center justify-center ring-2 ring-white/20 flex-shrink-0">
                   <span className="text-white font-bold text-sm">
-                    {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                    {(user?.name || user?.full_name)?.charAt(0)?.toUpperCase() || 'U'}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white truncate">
-                    {user?.name || 'User'}
+                    {user?.name || user?.full_name || 'User'}
                   </p>
                   <p className="text-xs text-white/60 truncate">
                     {user?.email || ''}
