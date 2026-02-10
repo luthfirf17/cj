@@ -970,7 +970,7 @@ const SettingsPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               {/* Privacy Policy Button */}
               <button
-                onClick={() => navigate('/user/privacy-policy')}
+                onClick={() => window.open('/privacy-policy', '_blank')}
                 className="group p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg hover:from-blue-100 hover:to-indigo-100 transition-all duration-200 text-left"
               >
                 <div className="flex items-center gap-3">
@@ -986,7 +986,7 @@ const SettingsPage = () => {
 
               {/* Terms of Service Button */}
               <button
-                onClick={() => navigate('/user/terms-of-service')}
+                onClick={() => window.open('/terms-of-service', '_blank')}
                 className="group p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg hover:from-green-100 hover:to-emerald-100 transition-all duration-200 text-left"
               >
                 <div className="flex items-center gap-3">

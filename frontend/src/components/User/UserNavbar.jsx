@@ -347,7 +347,7 @@ const UserNavbar = () => {
             {/* Privacy Policy */}
             <button
               onClick={() => {
-                navigate('/user/privacy-policy');
+                window.open('/privacy-policy', '_blank');
                 setIsDropdownOpen(false);
               }}
               className="group w-full flex items-center gap-4 px-5 py-3.5 text-left text-gray-700 
@@ -365,7 +365,7 @@ const UserNavbar = () => {
             {/* Terms of Service */}
             <button
               onClick={() => {
-                navigate('/user/terms-of-service');
+                window.open('/terms-of-service', '_blank');
                 setIsDropdownOpen(false);
               }}
               className="group w-full flex items-center gap-4 px-5 py-3.5 text-left text-gray-700 

@@ -23,8 +23,6 @@ import SettingsPage from './pages/User/SettingsPage'
 import BackupDataPage from './pages/User/BackupDataPage'
 import ClientSubmissionsPage from './pages/User/ClientSubmissionsPage'
 import ClientsPage from './pages/User/ClientsPage'
-import PrivacyPolicy from './pages/User/PrivacyPolicy'
-import TermsOfService from './pages/User/TermsOfService'
 // import UserProfile from './pages/User/Profile'
 // ... other user pages
 
@@ -33,6 +31,9 @@ import ClientBooking from './pages/ClientBooking'
 
 // Common Pages
 import NotFound from './pages/NotFound'
+import LandingPage from './pages/LandingPage'
+import PrivacyPolicy from './pages/User/PrivacyPolicy'
+import TermsOfService from './pages/User/TermsOfService'
 
 // Route Guards
 import ProtectedRoute from './components/Auth/ProtectedRoute'
@@ -43,11 +44,13 @@ function App() {
     <>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/booking/:bookingCode" element={<ClientBooking />} />
         <Route path="/client-booking/:userId" element={<ClientBooking />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
 
         {/* Admin Routes - Protected & Role-based */}
         <Route element={<ProtectedRoute />}>
@@ -96,10 +99,6 @@ function App() {
               
               {/* Settings */}
               <Route path="settings" element={<SettingsPage />} />
-              
-              {/* Legal Pages */}
-              <Route path="privacy-policy" element={<PrivacyPolicy />} />
-              <Route path="terms-of-service" element={<TermsOfService />} />
             </Route>
           </Route>
         </Route>

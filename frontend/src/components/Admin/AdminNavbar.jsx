@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiMenu, FiBell, FiUser, FiShield, FiFileText } from 'react-icons/fi';
 import Logo from '../Common/Logo';
+import authService from '../../services/authService';
 
 const AdminNavbar = ({ onMenuClick, onToggleSidebar, isSidebarCollapsed }) => {
   const navigate = useNavigate();
@@ -212,7 +213,7 @@ const AdminNavbar = ({ onMenuClick, onToggleSidebar, isSidebarCollapsed }) => {
 
                     <button
                       onClick={() => {
-                        navigate('/user/privacy-policy');
+                        window.open('/privacy-policy', '_blank');
                         setShowProfileMenu(false);
                       }}
                       className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-blue-300 hover:bg-slate-700/50 transition-all duration-300 rounded-xl mx-2 w-full text-left group"
@@ -225,7 +226,7 @@ const AdminNavbar = ({ onMenuClick, onToggleSidebar, isSidebarCollapsed }) => {
 
                     <button
                       onClick={() => {
-                        navigate('/user/terms-of-service');
+                        window.open('/terms-of-service', '_blank');
                         setShowProfileMenu(false);
                       }}
                       className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-green-300 hover:bg-slate-700/50 transition-all duration-300 rounded-xl mx-2 w-full text-left group"
@@ -242,8 +243,7 @@ const AdminNavbar = ({ onMenuClick, onToggleSidebar, isSidebarCollapsed }) => {
                       onClick={() => {
                         setShowProfileMenu(false);
                         if (window.confirm('⚠️ CONFIRMATION REQUIRED\n\nAre you sure you want to logout from the admin system?\n\nThis will end your current session.')) {
-                          localStorage.removeItem('token');
-                          localStorage.removeItem('user');
+                          authService.logout();
                           navigate('/login');
                         }
                       }}

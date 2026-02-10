@@ -15,6 +15,7 @@ import {
   FiDatabase,
 } from 'react-icons/fi';
 import Logo from '../Common/Logo';
+import authService from '../../services/authService';
 
 const AdminSidebar = ({ isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollapsed }) => {
   const navigate = useNavigate();
@@ -32,8 +33,7 @@ const AdminSidebar = ({ isMobileOpen, setIsMobileOpen, isCollapsed, setIsCollaps
 
   const handleLogout = () => {
     if (window.confirm('⚠️ CONFIRMATION REQUIRED\n\nAre you sure you want to logout from the admin system?\n\nThis will end your current session.')) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      authService.logout();
       navigate('/login');
     }
   };
